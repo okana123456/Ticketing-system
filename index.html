@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  SUPABASE SQL — run once in your project SQL editor
+  ============================================================
+  create table events (
+    id uuid default gen_random_uuid() primary key,
+    name text not null,
+    date timestamptz not null,
+    venue text not null,
+    description text,
+    created_at timestamptz default now()
+  );
+
+  create table ticket_types (
+    id uuid default gen_random_uuid() primary key,
+    event_id uuid references events(id) on delete cascade,
+    name text not null,
+    price numeric not null,
+    quantity_available integer not null,
+    quantity_sold integer default 0,
+    created_at timestamptz default now()
+  );
+
+  create table bookings (
+    id uuid default gen_random_uuid() primary key,
+    event_id uuid references events(id) on delete cascade,
+    ticket_type_id uuid references ticket_types(id) on delete cascade,
+    attendee_name text not null,
+    phone text not null,
+    email text not null,
+    ticket_code uuid default gen_random_uuid(),
+    amount_paid numeric not null,
+    payment_method text not null,
+    payment_status text default 'paid',
+    checked_in boolean default false,
+    checked_in_at timestamptz,
+    created_at timestamptz default now()
+  );
+
+  IMPORTANT (development):
+  Disable RLS on all three tables:
+    Supabase Table Editor > events / ticket_types / bookings > RLS > Disable.
+  ============================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tikiti — Event Ticketing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --amber:#F59E0B;
+    --amber-dark:#D97706;
+    --amber-soft:#FEF3C7;
+    --ink:#0D0D0D;
+    --ink-2:#3D3D3D;
+    --surface:#FFFFFF;
+    --bg:#F7F5F0;
+    --muted:#8A8278;
+    --line:#E8E4DC;
+    --line-2:#F0EDE7;
+    --ok:#059669;
+    --ok-soft:#D1FAE5;
+    --warn:#92400E;
+    --warn-soft:#FDE68A;
+    --err:#DC2626;
+    --err-soft:#FEE2E2;
+    --radius:10px;
+    --shadow:0 1px 4px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
+    --shadow-lg:0 8px 32px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.6}
+  a{color:var(--ink);text-decoration:none}
+  h1,h2,h3,h4{font-family:'Syne',sans-serif;font-weight:700;letter-spacing:-0.02em;margin:0}
+  h1{font-size:36px;line-height:1.1;font-weight:800}
+  h2{font-size:26px}
+  h3{font-size:19px}
+  p{margin:0 0 8px;color:var(--ink-2)}
+  label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px}
+  input,select,textarea{
+    width:100%;font:inherit;color:var(--ink);background:#fff;
+    border:1.5px solid var(--line);border-radius:var(--radius);padding:11px 14px;outline:none;
+    transition:border-color .15s,box-shadow .15s;font-size:14px;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,.15)}
+  textarea{resize:vertical;min-height:80px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;border:none;border-radius:var(--radius);padding:12px 20px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.01em}
+  .btn:hover{background:#222;transform:translateY(-1px);box-shadow:var(--shadow)}
+  .btn:active{transform:translateY(0)}
+  .btn:disabled{background:#C9C3B8;cursor:not-allowed;transform:none;box-shadow:none}
+  .btn-amber{background:var(--amber);color:var(--ink)}
+  .btn-amber:hover{background:var(--amber-dark);color:var(--ink)}
+  .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+  .btn-ghost:hover{background:var(--line-2);transform:none;box-shadow:none}
+  .btn-link{background:transparent;color:var(--amber-dark);border:none;padding:4px 0;cursor:pointer;font:inherit;font-weight:600;font-size:14px}
+  .btn-link:hover{text-decoration:underline}
+  .btn-danger-link{background:transparent;color:var(--err);border:none;padding:4px 0;cursor:pointer;font:inherit;font-weight:600;font-size:14px}
+
+  .container{max-width:1100px;margin:0 auto;padding:28px 24px}
+  .container-sm{max-width:680px;margin:0 auto;padding:28px 24px}
+
+  /* Topbar */
+  .topbar{background:#fff;border-bottom:1.5px solid var(--line);position:sticky;top:0;z-index:50}
+  .topbar-inner{max-width:1100px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.02em;color:var(--ink)}
+  .brand-icon{width:30px;height:30px;background:var(--amber);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .nav{display:flex;gap:20px;align-items:center}
+  .nav a{color:var(--muted);font-weight:500;font-size:14px;transition:color .15s}
+  .nav a:hover{color:var(--ink)}
+
+  /* Cards */
+  .card{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:24px;box-shadow:var(--shadow)}
+  .grid{display:grid;gap:16px}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .muted{color:var(--muted);font-size:13px}
+
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--ink-2);background:#fff}
+  .pill .dotc{width:7px;height:7px;border-radius:50%;background:var(--amber)}
+
+  .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;border:1.5px solid transparent;letter-spacing:.04em;text-transform:uppercase}
+  .badge.ok{background:var(--ok-soft);color:var(--ok);border-color:#A7F3D0}
+  .badge.warn{background:var(--warn-soft);color:var(--warn);border-color:#FCD34D}
+  .badge.err{background:var(--err-soft);color:var(--err);border-color:#FECACA}
+  .badge.neutral{background:var(--line-2);color:var(--ink-2);border-color:var(--line)}
+
+  /* Stats */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
+  .stat{background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:22px;position:relative;overflow:hidden}
+  .stat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--amber)}
+  .stat .label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+  .stat .num{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-0.03em;margin-top:8px}
+  .stat .sub{font-size:12px;color:var(--muted);margin-top:4px}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;background:#fff;border:1.5px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+  th,td{text-align:left;padding:13px 16px;font-size:14px;border-bottom:1px solid var(--line-2)}
+  th{background:var(--bg);font-weight:700;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:var(--bg)}
+
+  /* Event Hero */
+  .hero{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:32px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+  .hero::after{content:'';position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:var(--amber-soft);border-radius:50%;opacity:.6;pointer-events:none}
+  .hero h1{position:relative;z-index:1}
+  .meta-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:500;color:var(--ink-2)}
+
+  /* Step indicator */
+  .steps{display:flex;align-items:center}
+  .step{display:flex;align-items:center;gap:8px}
+  .step-num{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted);transition:all .3s;flex-shrink:0}
+  .step.active .step-num{background:var(--amber);border-color:var(--amber);color:var(--ink)}
+  .step.done .step-num{background:var(--ink);border-color:var(--ink);color:#fff}
+  .step-label{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+  .step.active .step-label,.step.done .step-label{color:var(--ink)}
+  .step-line{flex:1;height:2px;background:var(--line);margin:0 10px;min-width:24px;transition:background .3s}
+  .step.done + .step-line{background:var(--ink)}
+
+  /* Ticket type card */
+  .tt-card{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 20px;border:1.5px solid var(--line);border-radius:12px;background:#fff;margin-bottom:10px;transition:border-color .2s}
+  .tt-card:hover{border-color:#D4D0C8}
+  .tt-card.sold-out{opacity:.55}
+  .tt-name-label{font-weight:600;font-size:15px}
+  .tt-price-label{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--ink);margin-top:4px}
+
+  /* Availability progress bar */
+  .avail-bar{height:5px;background:var(--line);border-radius:999px;margin-top:8px;overflow:hidden;max-width:180px}
+  .avail-fill{height:100%;border-radius:999px;background:var(--amber);transition:width .5s ease}
+  .avail-fill.low{background:var(--err)}
+
+  /* Order summary */
+  .summary{background:var(--bg);border:1.5px dashed var(--line);border-radius:12px;padding:18px}
+  .summary .sline{display:flex;justify-content:space-between;padding:5px 0;color:var(--ink-2);font-size:14px}
+  .summary .total{display:flex;justify-content:space-between;padding-top:12px;margin-top:10px;border-top:1.5px solid var(--line);font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--ink)}
+
+  /* Payment method */
+  .pm{border:1.5px solid var(--line);border-radius:12px;padding:15px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;background:#fff;transition:all .15s}
+  .pm:hover{border-color:#C9C4BB}
+  .pm.selected{border-color:var(--amber);background:var(--amber-soft)}
+  .pm-title{font-weight:600;font-size:14px}
+  .pm-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .pm-radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);transition:all .15s;flex-shrink:0}
+  .pm.selected .pm-radio{border-color:var(--amber-dark);background:var(--amber-dark)}
+
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:100;animation:fadeIn .2s}
+  @media(min-width:600px){.overlay{align-items:center;padding:16px}}
+  .modal{background:#fff;border-radius:20px 20px 0 0;max-width:480px;width:100%;padding:28px 24px 36px;box-shadow:var(--shadow-lg);animation:slideUp .25s cubic-bezier(.32,1.2,.42,1)}
+  @media(min-width:600px){.modal{border-radius:20px;padding:32px 32px 32px}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+
+  /* Ticket confirmation — boarding pass style */
+  .ticket-wrap{max-width:520px;margin:0 auto}
+  .ticket{background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.12),0 4px 12px rgba(0,0,0,.07);position:relative}
+  .ticket-stripe{position:absolute;top:0;right:0;width:5px;height:100%;background:repeating-linear-gradient(45deg,var(--amber),var(--amber) 4px,transparent 4px,transparent 10px)}
+  .ticket-header{background:var(--ink);color:#fff;padding:28px 30px 24px}
+  .ticket-event-name{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-0.02em;line-height:1.2}
+  .ticket-event-meta{display:flex;gap:16px;margin-top:12px;flex-wrap:wrap}
+  .ticket-event-meta span{font-size:13px;color:rgba(255,255,255,.65)}
+  .ticket-tear{position:relative;height:1px;margin:0 -1.5px;overflow:visible}
+  .ticket-tear::before{content:'';position:absolute;left:14px;right:14px;top:0;border-top:1.5px dashed rgba(0,0,0,.12)}
+  .ticket-notch-l,.ticket-notch-r{position:absolute;top:-14px;width:28px;height:28px;border-radius:50%;background:var(--bg)}
+  .ticket-notch-l{left:-14px}
+  .ticket-notch-r{right:-14px}
+  .ticket-body{padding:24px 30px 28px}
+  .ticket-fields{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px}
+  .ticket-field .tf-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:3px}
+  .ticket-field .tf-value{font-weight:600;font-size:15px;color:var(--ink)}
+  .ticket-qr-row{display:flex;align-items:flex-start;gap:20px;padding-top:18px;border-top:1px dashed var(--line)}
+  .ticket-qr-box{background:#fff;padding:8px;border:1.5px solid var(--line);border-radius:10px;flex-shrink:0}
+  .ticket-code-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 11px;color:var(--muted);word-break:break-all;line-height:1.6;margin-top:8px}
+  .ticket-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+
+  /* Share box — prominent */
+  .share-box{background:var(--ink);border-radius:14px;padding:18px 20px;margin-bottom:20px}
+  .share-box-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.45);margin-bottom:8px}
+  .share-box-row{display:flex;gap:8px;align-items:center}
+  .share-box input{background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.2);color:#fff;font-size:13px;font-family:ui-monospace,monospace;border-radius:8px}
+  .share-box input::placeholder{color:rgba(255,255,255,.3)}
+  .share-box .btn-copy{background:var(--amber);color:var(--ink);white-space:nowrap;padding:10px 16px;font-size:13px;border-radius:8px;flex-shrink:0;border:none;cursor:pointer;font-weight:600;font-family:'DM Sans',sans-serif}
+  .share-box .btn-copy:hover{background:var(--amber-dark)}
+
+  /* Ticket type editor rows */
+  .tt-edit-card{background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:10px}
+  .ttr{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px;align-items:end;margin-bottom:8px}
+
+  /* Form */
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .full{grid-column:1/-1}
+
+  /* Revenue bar in table */
+  .rev-bar{height:6px;background:var(--line-2);border-radius:999px;overflow:hidden;width:80px}
+  .rev-bar-fill{height:100%;border-radius:999px;background:var(--amber)}
+
+  /* Login */
+  .login-wrap{min-height:80vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .login-card{max-width:360px;width:100%;background:#fff;border:1.5px solid var(--line);border-radius:20px;padding:36px;box-shadow:var(--shadow-lg)}
+
+  /* Scanner */
+  #qr-reader{border-radius:14px;overflow:hidden;border:1.5px solid var(--line)}
+
+  /* States */
+  .state{padding:48px 24px;text-align:center;border:1.5px dashed var(--line);border-radius:14px;background:#fff}
+  .state h3{margin-bottom:8px}
+
+  /* Alerts */
+  .inline-error{background:var(--err-soft);color:var(--err);border:1.5px solid #FECACA;padding:12px 14px;border-radius:10px;font-size:13px;margin-top:10px}
+  .inline-info{background:var(--amber-soft);color:var(--amber-dark);border:1.5px solid #FCD34D;padding:12px 14px;border-radius:10px;font-size:13px}
+  .inline-ok{background:var(--ok-soft);color:var(--ok);border:1.5px solid #A7F3D0;padding:12px 14px;border-radius:10px;font-size:13px}
+
+  /* Spinner */
+  .spinner{width:36px;height:36px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--amber);animation:spin .8s linear infinite;margin:0 auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pulse{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+  /* Toast */
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:toastIn .2s ease}
+  @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%)}}
+
+  /* Modal close btn */
+  .modal-close{background:var(--bg);border:none;cursor:pointer;width:32px;height:32px;border-radius:50%;font-size:16px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0}
+  .modal-close:hover{background:var(--line)}
+
+  /* Mobile */
+  @media(max-width:720px){
+    h1{font-size:28px}
+    .stats{grid-template-columns:1fr}
+    .form-grid{grid-template-columns:1fr}
+    .ttr{grid-template-columns:1fr 1fr}
+    .ttr .btn-danger-link{grid-column:1/-1}
+    .container,.container-sm{padding:16px}
+    .topbar-inner{padding:12px 16px}
+    table thead{display:none}
+    table,tbody,tr,td{display:block;width:100%}
+    tr{border:1.5px solid var(--line);border-radius:12px;margin-bottom:10px;padding:10px;background:#fff}
+    td{border:none;padding:6px 4px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+    td::before{content:attr(data-label);font-weight:700;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+    .ticket-fields{grid-template-columns:1fr}
+    .ticket-qr-row{flex-direction:column}
+    .ticket-header{padding:22px 22px 18px}
+    .ticket-body{padding:20px 22px 24px}
+    .steps .step-label{display:none}
+  }
+  @media print{
+    .topbar,.no-print{display:none!important}
+    body{background:#fff}
+    .ticket{box-shadow:none;border:1px solid var(--line)}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <a href="#/" class="brand">
+      <div class="brand-icon">🎟</div>
+      Tikiti
+    </a>
+    <nav class="nav" id="topnav"></nav>
+  </div>
+</div>
+
+<main id="app"></main>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script>
+/* =======================================================
+   CONFIG
+======================================================= */
+const SUPABASE_URL = "https://votyrlphojrubtohjeeed.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvdHlybHBob2pydWJ0b2hqZWVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODU1NDgsImV4cCI6MjA5NDk2MTU0OH0.gI4Cg91a43XLNzMr9E2Q0A3UCT-f5LT_igQGOUbbJn4";
+const ADMIN_PASSWORD = "admin2024";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* =======================================================
+   UTIL
+======================================================= */
+const $ = (sel, ctx=document) => ctx.querySelector(sel);
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
+const fmtKES = (n) => "KES " + Number(n||0).toLocaleString('en-KE',{maximumFractionDigits:0});
+const fmtDate = (iso) => {
+  if(!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + ' · ' + d.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true});
+};
+const escapeHTML = (s) => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg){
+  const t = el(`<div class="toast">${escapeHTML(msg)}</div>`);
+  $('#toast-root').appendChild(t);
+  setTimeout(()=>t.remove(), 2400);
+}
+function isAdmin(){ return sessionStorage.getItem('admin')==='1'; }
+function setAdmin(v){ v ? sessionStorage.setItem('admin','1') : sessionStorage.removeItem('admin'); }
+
+function renderNav(){
+  const nav = $('#topnav');
+  if(isAdmin()){
+    nav.innerHTML = `<a href="#/admin/dashboard">Dashboard</a><a href="#/scan">Scanner</a><a href="#" id="logoutLink" style="color:var(--err)">Logout</a>`;
+    $('#logoutLink').onclick = (e)=>{ e.preventDefault(); setAdmin(false); location.hash='#/admin'; };
+  } else {
+    nav.innerHTML = `<a href="#/admin">Admin</a>`;
+  }
+}
+
+/* =======================================================
+   ROUTER
+======================================================= */
+const routes = [
+  { match: /^#\/$/, handler: renderHome },
+  { match: /^#\/event\/([^/]+)$/, handler: (m)=>renderEvent(m[1]) },
+  { match: /^#\/admin$/, handler: renderAdminLogin },
+  { match: /^#\/admin\/dashboard$/, handler: renderAdminDashboard },
+  { match: /^#\/admin\/event\/([^/]+)$/, handler: (m)=>renderAdminEvent(m[1]) },
+  { match: /^#\/scan$/, handler: renderScanner },
+];
+function router(){
+  if(!location.hash) location.hash='#/';
+  renderNav();
+  const h = location.hash;
+  for(const r of routes){ const m = h.match(r.match); if(m){ r.handler(m); return; } }
+  $('#app').innerHTML = `<div class="container"><div class="state"><h3>Page not found</h3></div></div>`;
+}
+window.addEventListener('hashchange', ()=>{ stopScannerIfAny(); router(); });
+
+/* =======================================================
+   HOME
+======================================================= */
+function renderHome(){
+  $('#app').innerHTML = `
+    <div class="container-sm" style="padding-top:64px;text-align:center">
+      <div style="font-size:56px;margin-bottom:16px">🎟️</div>
+      <h1>Welcome to Tikiti</h1>
+      <p style="font-size:16px;color:var(--muted);margin-top:12px;max-width:340px;margin-inline:auto;line-height:1.6">
+        Use the event link shared with you to browse and book tickets.
+      </p>
+    </div>`;
+}
+
+/* =======================================================
+   EVENT PUBLIC PAGE
+======================================================= */
+async function renderEvent(id){
+  const app = $('#app');
+  app.innerHTML = `<div class="container-sm"><div class="state pulse"><div class="spinner"></div><p style="margin-top:14px;color:var(--muted)">Loading…</p></div></div>`;
+  let event, tts;
+  try{
+    const e1 = await sb.from('events').select('*').eq('id',id).maybeSingle();
+    if(e1.error) throw e1.error;
+    event = e1.data;
+    if(!event){ app.innerHTML=`<div class="container-sm"><div class="state"><h3>Event not found</h3><p>This link may be invalid.</p></div></div>`; return; }
+    const e2 = await sb.from('ticket_types').select('*').eq('event_id',id).order('created_at',{ascending:true});
+    if(e2.error) throw e2.error;
+    tts = e2.data||[];
+  }catch(err){ app.innerHTML=`<div class="container-sm"><div class="inline-error">Could not load: ${escapeHTML(err.message)}</div></div>`; return; }
+
+  app.innerHTML = `
+    <div class="container-sm">
+      <!-- Step indicator -->
+      <div class="steps" id="stepWrap" style="gap:0;margin-bottom:24px">
+        <div class="step active" id="st1"><div class="step-num">1</div><div class="step-label">Select tickets</div></div>
+        <div class="step-line" id="sl1"></div>
+        <div class="step" id="st2"><div class="step-num">2</div><div class="step-label">Your details</div></div>
+        <div class="step-line" id="sl2"></div>
+        <div class="step" id="st3"><div class="step-num">3</div><div class="step-label">Payment</div></div>
+      </div>
+
+      <!-- Hero -->
+      <div class="hero" style="margin-bottom:22px">
+        <span class="pill"><span class="dotc"></span>${escapeHTML(event.venue)}</span>
+        <h1 style="margin-top:14px;position:relative;z-index:1">${escapeHTML(event.name)}</h1>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:1">
+          <span class="meta-chip">📅 ${escapeHTML(fmtDate(event.date))}</span>
+          <span class="meta-chip">📍 ${escapeHTML(event.venue)}</span>
+        </div>
+        ${event.description ? `<p style="margin-top:16px;position:relative;z-index:1;color:var(--ink-2)">${escapeHTML(event.description)}</p>`:''}
+      </div>
+
+      <!-- Ticket types -->
+      <h3 style="margin-bottom:14px">Available Tickets</h3>
+      <div id="ttList" style="margin-bottom:24px"></div>
+
+      <!-- Details form -->
+      <div class="card">
+        <h3 style="margin-bottom:18px">Your Details</h3>
+        <div class="form-grid">
+          <div><label>Full name</label><input id="f_name" placeholder="Jane Doe"/></div>
+          <div><label>Phone</label><input id="f_phone" placeholder="07XXXXXXXX"/></div>
+          <div class="full"><label>Email</label><input id="f_email" type="email" placeholder="you@email.com"/></div>
+          <div><label>Ticket type</label><select id="f_tt"></select></div>
+          <div><label>Quantity</label><select id="f_qty">${[...Array(10)].map((_,i)=>`<option>${i+1}</option>`).join('')}</select></div>
+        </div>
+        <div style="margin-top:18px"><div class="summary" id="summary"></div></div>
+        <div id="bookError"></div>
+        <button class="btn btn-amber" id="payBtn" style="width:100%;margin-top:18px;padding:14px;font-size:15px">Continue to Payment →</button>
+      </div>
+    </div>`;
+
+  const ttList = $('#ttList'), ttSel = $('#f_tt');
+
+  if(tts.length===0){
+    ttList.innerHTML=`<div class="state"><p>No tickets configured yet.</p></div>`;
+    $('#payBtn').disabled=true;
+  } else {
+    tts.forEach(tt=>{
+      const rem = (tt.quantity_available||0)-(tt.quantity_sold||0);
+      const sold = rem<=0;
+      const pct = Math.round(((tt.quantity_sold||0)/(tt.quantity_available||1))*100);
+      const fillCls = rem<=10&&!sold ? 'low' : '';
+      ttList.appendChild(el(`
+        <div class="tt-card${sold?' sold-out':''}">
+          <div style="flex:1">
+            <div class="tt-name-label">${escapeHTML(tt.name)}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <span class="muted" style="font-size:12px">${sold?'Sold out':rem+' remaining'}</span>
+              ${rem<=20&&!sold?'<span class="badge warn">Almost Gone</span>':''}
+              ${sold?'<span class="badge err">Sold Out</span>':''}
+            </div>
+            <div class="avail-bar"><div class="avail-fill ${fillCls}" style="width:${pct}%"></div></div>
+          </div>
+          <div class="tt-price-label">${fmtKES(tt.price)}</div>
+        </div>`));
+      if(!sold){ const o=document.createElement('option'); o.value=tt.id; o.textContent=`${tt.name} — ${fmtKES(tt.price)}`; ttSel.appendChild(o); }
+    });
+    if(ttSel.options.length===0){ $('#payBtn').disabled=true; ttSel.innerHTML=`<option>All sold out</option>`; }
+  }
+
+  function getSelectedTT(){ return tts.find(t=>t.id===ttSel.value); }
+  function updateSummary(){
+    const tt=getSelectedTT(), qty=parseInt($('#f_qty').value||'1',10);
+    if(!tt){ $('#summary').innerHTML=`<div style="text-align:center;color:var(--muted);padding:6px 0;font-size:13px">Select a ticket type to see total</div>`; return; }
+    const total=Number(tt.price)*qty;
+    $('#summary').innerHTML=`
+      <div class="sline"><span>${escapeHTML(tt.name)}</span><span>${fmtKES(tt.price)}</span></div>
+      <div class="sline"><span>Quantity</span><span>× ${qty}</span></div>
+      <div class="total"><span>Total</span><span>${fmtKES(total)}</span></div>`;
+  }
+  ttSel.onchange=updateSummary; $('#f_qty').onchange=updateSummary; updateSummary();
+
+  // Advance step 1→2 when user focuses a detail field
+  ['f_name','f_email','f_phone'].forEach(fid=>{
+    document.getElementById(fid)?.addEventListener('focus',()=>{
+      $('#st1').classList.remove('active'); $('#st1').classList.add('done');
+      $('#sl1').style.background='var(--ink)';
+      $('#st2').classList.add('active');
+    },{once:true});
+  });
+
+  $('#payBtn').onclick=()=>{
+    $('#bookError').innerHTML='';
+    const name=$('#f_name').value.trim(), phone=$('#f_phone').value.trim(), email=$('#f_email').value.trim();
+    const qty=parseInt($('#f_qty').value,10), tt=getSelectedTT();
+    if(!name||!phone||!email){ $('#bookError').innerHTML=`<div class="inline-error">Please fill in all your details.</div>`; return; }
+    if(!/^\S+@\S+\.\S+$/.test(email)){ $('#bookError').innerHTML=`<div class="inline-error">Please enter a valid email address.</div>`; return; }
+    if(!tt){ $('#bookError').innerHTML=`<div class="inline-error">Please select a ticket type.</div>`; return; }
+    const rem=(tt.quantity_available||0)-(tt.quantity_sold||0);
+    if(qty>rem){ $('#bookError').innerHTML=`<div class="inline-error">Only ${rem} ticket(s) remaining.</div>`; return; }
+    // advance step 2→3
+    $('#st2').classList.remove('active'); $('#st2').classList.add('done');
+    $('#sl2').style.background='var(--ink)';
+    $('#st3').classList.add('active');
+    openPaymentModal({event,tt,qty,name,phone,email});
+  };
+}
+
+/* =======================================================
+   PAYMENT MODAL
+======================================================= */
+function closeModal(){ $('#modal-root').innerHTML=''; }
+
+function openPaymentModal(ctx){
+  ctx.total = Number(ctx.tt.price)*ctx.qty;
+  renderPayStep1(ctx);
+}
+
+function modalShell(content){
+  return `<div class="overlay"><div class="modal">${content}</div></div>`;
+}
+function modalHeader(title){
+  return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <h3>${title}</h3><button class="modal-close" onclick="closeModal()">✕</button></div>`;
+}
+function amountRow(ctx){
+  return `<div style="background:var(--bg);border-radius:10px;padding:13px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:13px;color:var(--muted)">${escapeHTML(ctx.tt.name)} × ${ctx.qty}</span>
+    <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:20px">${fmtKES(ctx.total)}</span></div>`;
+}
+
+function renderPayStep1(ctx){
+  $('#modal-root').innerHTML = modalShell(`
+    ${modalHeader('Pay for Tickets')}
+    ${amountRow(ctx)}
+    <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px">Payment method</p>
+    <div id="pmMpesa" class="pm selected">
+      <div><div class="pm-title">📱 M-Pesa</div><div class="pm-sub">STK push to your phone</div></div>
+      <div class="pm-radio"></div>
+    </div>
+    <div id="pmCard" class="pm">
+      <div><div class="pm-title">💳 Card</div><div class="pm-sub">Visa, Mastercard</div></div>
+      <div class="pm-radio"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:22px">
+      <button class="btn btn-ghost" style="flex:1" id="pCancel">Cancel</button>
+      <button class="btn btn-amber" style="flex:2" id="pNext">Continue →</button>
+    </div>`);
+  let method='mpesa';
+  const mp=$('#pmMpesa'),cd=$('#pmCard');
+  mp.onclick=()=>{ method='mpesa'; mp.classList.add('selected'); cd.classList.remove('selected'); };
+  cd.onclick=()=>{ method='card'; cd.classList.add('selected'); mp.classList.remove('selected'); };
+  $('#pCancel').onclick=closeModal;
+  $('#pNext').onclick=()=>{ ctx.method=method; method==='mpesa'?renderPayMpesa(ctx):renderPayCard(ctx); };
+}
+
+function renderPayMpesa(ctx){
+  $('#modal-root').innerHTML = modalShell(`
+    ${modalHeader('M-Pesa Payment')}
+    ${amountRow(ctx)}
+    <label>Phone number</label>
+    <input id="mpPhone" value="${escapeHTML(ctx.phone)}"/>
+    <p class="muted" style="margin-top:10px;font-size:13px">An STK Push will be sent to your phone. Enter your M-Pesa PIN when prompted.</p>
+    <button class="btn btn-amber" id="mpSend" style="width:100%;margin-top:18px;padding:13px">Send Payment Request</button>
+    <div style="display:flex;justify-content:center;gap:16px;margin-top:12px">
+      <button class="btn-link" id="simFail" style="color:var(--muted);font-weight:500;font-size:13px">Simulate failure</button>
+      <button class="btn-link" id="goBack" style="color:var(--muted);font-weight:500;font-size:13px">← Back</button>
+    </div>`);
+  $('#goBack').onclick=()=>renderPayStep1(ctx);
+  $('#simFail').onclick=()=>renderPayFail(ctx);
+  $('#mpSend').onclick=()=>{ ctx.phone=$('#mpPhone').value.trim()||ctx.phone; renderProcessing('Waiting for payment confirmation…',4000,()=>renderPaySuccess(ctx)); };
+}
+
+function renderPayCard(ctx){
+  $('#modal-root').innerHTML = modalShell(`
+    ${modalHeader('Card Payment')}
+    ${amountRow(ctx)}
+    <label>Card number</label>
+    <input id="cNum" inputmode="numeric" maxlength="19" placeholder="1234 5678 9012 3456" style="font-family:ui-monospace,monospace"/>
+    <div class="form-grid" style="margin-top:12px">
+      <div><label>Expiry</label><input id="cExp" maxlength="5" placeholder="MM/YY"/></div>
+      <div><label>CVV</label><input id="cCvv" maxlength="4" placeholder="•••" type="password"/></div>
+    </div>
+    <button class="btn btn-amber" id="cPay" style="width:100%;margin-top:18px;padding:13px">Pay ${fmtKES(ctx.total)}</button>
+    <div style="display:flex;justify-content:center;gap:16px;margin-top:12px">
+      <button class="btn-link" id="simFail" style="color:var(--muted);font-weight:500;font-size:13px">Simulate failure</button>
+      <button class="btn-link" id="goBack" style="color:var(--muted);font-weight:500;font-size:13px">← Back</button>
+    </div>`);
+  $('#cNum').addEventListener('input',e=>{ let v=e.target.value.replace(/\D/g,'').slice(0,16); e.target.value=v.replace(/(.{4})/g,'$1 ').trim(); });
+  $('#cExp').addEventListener('input',e=>{ let v=e.target.value.replace(/\D/g,'').slice(0,4); if(v.length>2)v=v.slice(0,2)+'/'+v.slice(2); e.target.value=v; });
+  $('#cCvv').addEventListener('input',e=>{ e.target.value=e.target.value.replace(/\D/g,''); });
+  $('#goBack').onclick=()=>renderPayStep1(ctx);
+  $('#simFail').onclick=()=>renderPayFail(ctx);
+  $('#cPay').onclick=()=>{
+    const n=$('#cNum').value.replace(/\s/g,'');
+    if(n.length<12||!$('#cExp').value||!$('#cCvv').value){
+      const m=$('.modal'); let er=$('#cardErr');
+      if(!er){ er=el(`<div class="inline-error" id="cardErr">Please enter valid card details.</div>`); m.appendChild(er); } return;
+    }
+    renderProcessing('Processing payment…',3000,()=>renderPaySuccess(ctx));
+  };
+}
+
+function renderProcessing(msg,ms,after){
+  $('#modal-root').innerHTML = modalShell(`<div style="text-align:center;padding:20px 0">
+    <div class="spinner"></div>
+    <p class="pulse" style="margin-top:18px;font-weight:600;font-size:15px">${escapeHTML(msg)}</p>
+    <p class="muted" style="margin-top:6px;font-size:13px">Please do not close this window.</p>
+  </div>`);
+  setTimeout(after,ms);
+}
+
+function renderPayFail(ctx){
+  $('#modal-root').innerHTML = modalShell(`
+    <div style="text-align:center">
+      <div style="font-size:40px;margin-bottom:12px">❌</div>
+      <h3 style="color:var(--err)">Payment Failed</h3>
+      <p style="color:var(--muted);margin-top:8px">Payment could not be processed. Please try again.</p>
+      <div style="display:flex;gap:10px;margin-top:22px">
+        <button class="btn btn-ghost" style="flex:1" id="fClose">Close</button>
+        <button class="btn btn-amber" style="flex:2" id="fRetry">Try Again</button>
+      </div>
+    </div>`);
+  $('#fClose').onclick=closeModal;
+  $('#fRetry').onclick=()=>renderPayStep1(ctx);
+}
+
+function renderPaySuccess(ctx){
+  $('#modal-root').innerHTML = modalShell(`
+    <div style="text-align:center">
+      <div style="font-size:48px;margin-bottom:12px">✅</div>
+      <h3 style="color:var(--ok)">Payment Confirmed</h3>
+      <p style="color:var(--muted);margin-top:8px">${fmtKES(ctx.total)} received — your ticket is being issued</p>
+      <button class="btn btn-amber" id="cContinue" style="width:100%;margin-top:22px;padding:13px">Get My Ticket →</button>
+    </div>`);
+  $('#cContinue').onclick=()=>finalizeBooking(ctx);
+}
+
+async function finalizeBooking(ctx){
+  renderProcessing('Issuing your ticket…',600,async()=>{
+    try{
+      const tt=await sb.from('ticket_types').select('*').eq('id',ctx.tt.id).single();
+      if(tt.error) throw tt.error;
+      const rem=(tt.data.quantity_available||0)-(tt.data.quantity_sold||0);
+      if(ctx.qty>rem) throw new Error(`Only ${rem} ticket(s) remaining.`);
+      const ins=await sb.from('bookings').insert({
+        event_id:ctx.event.id,ticket_type_id:ctx.tt.id,
+        attendee_name:ctx.name,phone:ctx.phone,email:ctx.email,
+        amount_paid:ctx.total,payment_method:ctx.method,payment_status:'paid'
+      }).select().single();
+      if(ins.error) throw ins.error;
+      const upd=await sb.from('ticket_types').update({quantity_sold:(tt.data.quantity_sold||0)+ctx.qty}).eq('id',ctx.tt.id);
+      if(upd.error) throw upd.error;
+      closeModal();
+      renderConfirmation({booking:ins.data,event:ctx.event,tt:ctx.tt,qty:ctx.qty});
+    }catch(err){
+      $('#modal-root').innerHTML=modalShell(`<div class="inline-error">Could not save booking: ${escapeHTML(err.message)}</div>
+        <button class="btn" style="width:100%;margin-top:12px" onclick="closeModal()">Close</button>`);
+    }
+  });
+}
+
+/* =======================================================
+   CONFIRMATION — boarding pass
+======================================================= */
+function renderConfirmation({booking,event,tt,qty}){
+  const code=booking.ticket_code;
+  const msgTxt=`Ticket for ${event.name} on ${fmtDate(event.date)} at ${event.venue}. Attendee: ${booking.attendee_name}. Ticket code: ${code}`;
+  const wa=`https://wa.me/?text=${encodeURIComponent(msgTxt)}`;
+  const mail=`mailto:?subject=${encodeURIComponent('Your ticket for '+event.name)}&body=${encodeURIComponent(msgTxt)}`;
+
+  $('#app').innerHTML=`
+    <div class="container-sm" style="padding-top:28px">
+      <div style="text-align:center;margin-bottom:24px">
+        <span class="badge ok" style="font-size:13px;padding:7px 16px">🎉 Booking Confirmed</span>
+        <p class="muted" style="margin-top:10px;font-size:13px">Save or share your ticket below.</p>
+      </div>
+
+      <div class="ticket-wrap">
+        <div class="ticket" id="confirmCard">
+          <div class="ticket-stripe"></div>
+
+          <div class="ticket-header">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px">🎟 Tikiti · E-Ticket</div>
+            <div class="ticket-event-name">${escapeHTML(event.name)}</div>
+            <div class="ticket-event-meta">
+              <span>📅 ${escapeHTML(fmtDate(event.date))}</span>
+              <span>📍 ${escapeHTML(event.venue)}</span>
+            </div>
+          </div>
+
+          <div class="ticket-tear" style="position:relative">
+            <div class="ticket-notch-l"></div>
+            <div class="ticket-notch-r"></div>
+            <div style="border-top:1.5px dashed rgba(0,0,0,.1);margin:0 14px"></div>
+          </div>
+
+          <div class="ticket-body">
+            <div class="ticket-fields">
+              <div class="ticket-field"><div class="tf-label">Attendee</div><div class="tf-value">${escapeHTML(booking.attendee_name)}</div></div>
+              <div class="ticket-field"><div class="tf-label">Ticket Type</div><div class="tf-value">${escapeHTML(tt.name)}</div></div>
+              <div class="ticket-field"><div class="tf-label">Quantity</div><div class="tf-value">${qty}</div></div>
+              <div class="ticket-field"><div class="tf-label">Amount Paid</div><div class="tf-value">${fmtKES(booking.amount_paid)}</div></div>
+            </div>
+            <div class="ticket-qr-row">
+              <div class="ticket-qr-box"><div id="qr"></div></div>
+              <div style="flex:1">
+                <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Booking Code</div>
+                <div class="ticket-code-mono">${escapeHTML(code)}</div>
+                <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.5">Show this QR code at the venue entrance for entry.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ticket-actions no-print">
+          <a class="btn btn-ghost" href="${wa}" target="_blank" rel="noopener">📱 WhatsApp</a>
+          <a class="btn btn-ghost" href="${mail}">📧 Email</a>
+          <button class="btn btn-amber" onclick="window.print()" style="flex:1">⬇ Save / Print</button>
+        </div>
+      </div>
+    </div>`;
+  new QRCode(document.getElementById('qr'),{text:code,width:130,height:130,correctLevel:QRCode.CorrectLevel.M});
+}
+
+/* =======================================================
+   ADMIN LOGIN
+======================================================= */
+function renderAdminLogin(){
+  if(isAdmin()){ location.hash='#/admin/dashboard'; return; }
+  $('#app').innerHTML=`
+    <div class="login-wrap">
+      <div class="login-card">
+        <div style="font-size:32px;text-align:center;margin-bottom:16px">🔐</div>
+        <h2 style="text-align:center">Admin Login</h2>
+        <p class="muted" style="text-align:center;margin:6px 0 22px">Enter the admin password to continue.</p>
+        <label>Password</label>
+        <input id="pw" type="password" placeholder="••••••••"/>
+        <div id="loginErr"></div>
+        <button class="btn btn-amber" id="loginBtn" style="width:100%;margin-top:16px;padding:13px">Login →</button>
+      </div>
+    </div>`;
+  const go=()=>{ const v=$('#pw').value; if(v===ADMIN_PASSWORD){ setAdmin(true); location.hash='#/admin/dashboard'; } else $('#loginErr').innerHTML=`<div class="inline-error">Incorrect password.</div>`; };
+  $('#loginBtn').onclick=go;
+  $('#pw').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+}
+
+/* =======================================================
+   ADMIN DASHBOARD
+======================================================= */
+async function renderAdminDashboard(){
+  if(!isAdmin()){ location.hash='#/admin'; return; }
+  const app=$('#app');
+  app.innerHTML=`<div class="container"><div class="state pulse"><div class="spinner"></div><p style="margin-top:14px;color:var(--muted)">Loading…</p></div></div>`;
+  let events,bookings;
+  try{
+    const e1=await sb.from('events').select('*').order('date',{ascending:false}); if(e1.error) throw e1.error; events=e1.data||[];
+    const e2=await sb.from('bookings').select('event_id,amount_paid'); if(e2.error) throw e2.error; bookings=e2.data||[];
+  }catch(err){ app.innerHTML=`<div class="container"><div class="inline-error">Could not load: ${escapeHTML(err.message)}</div></div>`; return; }
+
+  const totalRev=bookings.reduce((s,b)=>s+Number(b.amount_paid||0),0);
+  const perEvent={};
+  bookings.forEach(b=>{ const x=perEvent[b.event_id]||{count:0,revenue:0}; x.count++; x.revenue+=Number(b.amount_paid||0); perEvent[b.event_id]=x; });
+  const maxRev=Math.max(...Object.values(perEvent).map(v=>v.revenue),1);
+  const base=location.origin+location.pathname;
+
+  app.innerHTML=`
+    <div class="container">
+      <div class="between" style="margin-bottom:24px">
+        <div><h1>Dashboard</h1><p class="muted" style="margin-top:4px">Manage events and track revenue</p></div>
+        <button class="btn btn-amber" id="toggleCreate">+ Create Event</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="label">Total Events</div><div class="num">${events.length}</div><div class="sub">All time</div></div>
+        <div class="stat"><div class="label">Bookings</div><div class="num">${bookings.length}</div><div class="sub">Tickets sold</div></div>
+        <div class="stat"><div class="label">Revenue</div><div class="num">${fmtKES(totalRev)}</div><div class="sub">All events</div></div>
+      </div>
+
+      <div id="createPanel" style="display:none;margin-bottom:24px"></div>
+
+      <div class="between" style="margin-bottom:14px"><h3>Events</h3></div>
+      <div id="eventsTable"></div>
+    </div>`;
+
+  $('#toggleCreate').onclick=()=>{
+    const p=$('#createPanel');
+    if(p.style.display==='none'){ p.style.display=''; renderCreatePanel(p); $('#toggleCreate').textContent='✕ Cancel'; }
+    else { p.style.display='none'; p.innerHTML=''; $('#toggleCreate').textContent='+ Create Event'; }
+  };
+
+  const tbl=$('#eventsTable');
+  if(events.length===0){ tbl.innerHTML=`<div class="state"><h3>No events yet</h3><p>Create your first event above.</p></div>`; }
+  else {
+    const rows=events.map(e=>{
+      const s=perEvent[e.id]||{count:0,revenue:0};
+      const link=`${base}#/event/${e.id}`;
+      const pct=Math.round((s.revenue/maxRev)*100);
+      return `<tr>
+        <td data-label="Event"><strong>${escapeHTML(e.name)}</strong></td>
+        <td data-label="Date">${escapeHTML(fmtDate(e.date))}</td>
+        <td data-label="Venue">${escapeHTML(e.venue)}</td>
+        <td data-label="Bookings"><span class="badge neutral">${s.count}</span></td>
+        <td data-label="Revenue">
+          <div style="display:flex;align-items:center;gap:10px">
+            <strong>${fmtKES(s.revenue)}</strong>
+            <div class="rev-bar"><div class="rev-bar-fill" style="width:${pct}%"></div></div>
+          </div>
+        </td>
+        <td data-label="Actions">
+          <div style="display:flex;gap:12px;align-items:center">
+            <button class="btn-link copyLink" data-link="${escapeHTML(link)}" style="font-size:13px">Copy Link</button>
+            <a href="#/admin/event/${e.id}" style="font-size:13px;font-weight:600">Manage →</a>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+    tbl.innerHTML=`<table><thead><tr><th>Event</th><th>Date</th><th>Venue</th><th>Bookings</th><th>Revenue</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+    tbl.querySelectorAll('.copyLink').forEach(btn=>{ btn.onclick=()=>{ navigator.clipboard.writeText(btn.dataset.link); toast('Link copied!'); }; });
+  }
+}
+
+function renderCreatePanel(container){
+  container.innerHTML=`
+    <div class="card">
+      <h3 style="margin-bottom:18px">Create New Event</h3>
+      <div class="form-grid">
+        <div class="full"><label>Event name</label><input id="e_name" placeholder="Concert in the Park"/></div>
+        <div><label>Date & time</label><input id="e_date" type="datetime-local"/></div>
+        <div><label>Venue</label><input id="e_venue" placeholder="KICC Nairobi"/></div>
+        <div class="full"><label>Description</label><textarea id="e_desc" placeholder="Tell attendees what to expect…"></textarea></div>
+      </div>
+      <h3 style="margin:22px 0 12px">Ticket Types</h3>
+      <div id="ttRows"></div>
+      <button class="btn-link" id="addTT">+ Add Ticket Type</button>
+      <div id="createErr"></div>
+      <div style="margin-top:16px"><button class="btn btn-amber" id="saveEvent">Save Event</button></div>
+      <div id="savedBox" style="margin-top:16px"></div>
+    </div>`;
+
+  const rows=$('#ttRows');
+  function addRow(){
+    const row=el(`<div class="ttr">
+      <div><label>Name</label><input class="tt-name" placeholder="Regular"/></div>
+      <div><label>Price (KES)</label><input class="tt-price" type="number" min="0" placeholder="1000"/></div>
+      <div><label>Quantity</label><input class="tt-qty" type="number" min="1" placeholder="100"/></div>
+      <button class="btn-danger-link tt-rm" style="padding-bottom:8px">Remove</button>
+    </div>`);
+    row.querySelector('.tt-rm').onclick=()=>row.remove();
+    rows.appendChild(row);
+  }
+  addRow();
+  $('#addTT').onclick=addRow;
+
+  $('#saveEvent').onclick=async()=>{
+    $('#createErr').innerHTML='';
+    const name=$('#e_name').value.trim(), date=$('#e_date').value, venue=$('#e_venue').value.trim(), desc=$('#e_desc').value.trim();
+    if(!name||!date||!venue){ $('#createErr').innerHTML=`<div class="inline-error">Please fill in name, date, and venue.</div>`; return; }
+    const tts=[...rows.querySelectorAll('.ttr')].map(r=>({
+      name:r.querySelector('.tt-name').value.trim(),
+      price:parseFloat(r.querySelector('.tt-price').value),
+      quantity_available:parseInt(r.querySelector('.tt-qty').value,10)
+    })).filter(t=>t.name&&!isNaN(t.price)&&!isNaN(t.quantity_available));
+    if(tts.length===0){ $('#createErr').innerHTML=`<div class="inline-error">Add at least one valid ticket type.</div>`; return; }
+    const btn=$('#saveEvent'); btn.disabled=true; btn.textContent='Saving…';
+    try{
+      const ev=await sb.from('events').insert({name,date:new Date(date).toISOString(),venue,description:desc}).select().single();
+      if(ev.error) throw ev.error;
+      const ttIns=await sb.from('ticket_types').insert(tts.map(t=>({...t,event_id:ev.data.id})));
+      if(ttIns.error) throw ttIns.error;
+      const link=`${location.origin}${location.pathname}#/event/${ev.data.id}`;
+      $('#savedBox').innerHTML=`
+        <div class="inline-ok" style="margin-bottom:12px">✅ Event created! Share the link below.</div>
+        <div class="share-box">
+          <div class="share-box-label">Public Booking Link</div>
+          <div class="share-box-row">
+            <input id="shareInput" readonly value="${escapeHTML(link)}"/>
+            <button class="btn-copy" id="copyShare">Copy</button>
+          </div>
+        </div>
+        <a href="#/admin/event/${ev.data.id}" class="btn btn-ghost" style="margin-top:12px;font-size:14px">Manage Event →</a>`;
+      $('#copyShare').onclick=()=>{ $('#shareInput').select(); navigator.clipboard.writeText(link); toast('Link copied!'); };
+    }catch(err){ btn.disabled=false; btn.textContent='Save Event'; $('#createErr').innerHTML=`<div class="inline-error">Could not save: ${escapeHTML(err.message)}</div>`; }
+  };
+}
+
+/* =======================================================
+   ADMIN EVENT DETAIL
+======================================================= */
+async function renderAdminEvent(id){
+  if(!isAdmin()){ location.hash='#/admin'; return; }
+  const app=$('#app');
+  app.innerHTML=`<div class="container"><div class="state pulse"><div class="spinner"></div><p style="margin-top:14px;color:var(--muted)">Loading…</p></div></div>`;
+  let event,tts,bookings;
+  try{
+    const r1=await sb.from('events').select('*').eq('id',id).maybeSingle(); if(r1.error) throw r1.error;
+    event=r1.data; if(!event){ app.innerHTML=`<div class="container"><div class="state"><h3>Event not found</h3></div></div>`; return; }
+    const r2=await sb.from('ticket_types').select('*').eq('event_id',id).order('created_at',{ascending:true}); if(r2.error) throw r2.error; tts=r2.data||[];
+    const r3=await sb.from('bookings').select('*').eq('event_id',id).order('created_at',{ascending:false}); if(r3.error) throw r3.error; bookings=r3.data||[];
+  }catch(err){ app.innerHTML=`<div class="container"><div class="inline-error">Could not load: ${escapeHTML(err.message)}</div></div>`; return; }
+
+  const ttMap=Object.fromEntries(tts.map(t=>[t.id,t]));
+  const link=`${location.origin}${location.pathname}#/event/${id}`;
+  const totalRev=bookings.reduce((s,b)=>s+Number(b.amount_paid||0),0);
+  const checkedIn=bookings.filter(b=>b.checked_in).length;
+
+  app.innerHTML=`
+    <div class="container">
+      <div class="between" style="margin-bottom:20px">
+        <a href="#/admin/dashboard" style="font-weight:600;color:var(--muted);font-size:14px">← Dashboard</a>
+      </div>
+
+      <!-- Prominent share link -->
+      <div class="share-box" style="margin-bottom:20px">
+        <div class="share-box-label">Public Booking Link — share with attendees</div>
+        <div class="share-box-row">
+          <input id="shareInput" readonly value="${escapeHTML(link)}"/>
+          <button class="btn-copy" id="copyEv">Copy Link</button>
+        </div>
+      </div>
+
+      <!-- Event header -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="between">
+          <div>
+            <h2>${escapeHTML(event.name)}</h2>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+              <span class="meta-chip">📅 ${escapeHTML(fmtDate(event.date))}</span>
+              <span class="meta-chip">📍 ${escapeHTML(event.venue)}</span>
+            </div>
+            ${event.description?`<p style="margin-top:12px">${escapeHTML(event.description)}</p>`:''}
+          </div>
+          <button class="btn btn-ghost" id="editBtn" style="font-size:13px;flex-shrink:0">✏ Edit Event</button>
+        </div>
+        <div id="editPanel" style="margin-top:16px;display:none"></div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
+        <div class="stat"><div class="label">Revenue</div><div class="num" style="font-size:22px">${fmtKES(totalRev)}</div></div>
+        <div class="stat"><div class="label">Bookings</div><div class="num" style="font-size:22px">${bookings.length}</div></div>
+        <div class="stat"><div class="label">Checked In</div><div class="num" style="font-size:22px">${checkedIn}</div></div>
+      </div>
+
+      <!-- Ticket types with edit -->
+      <div class="between" style="margin-bottom:12px">
+        <h3>Ticket Types</h3>
+        <button class="btn-link" id="editTTBtn" style="font-size:13px">✏ Edit Ticket Types</button>
+      </div>
+      <div id="ttSection">
+        ${tts.map(t=>{
+          const sold=t.quantity_sold||0;
+          const rev=bookings.filter(b=>b.ticket_type_id===t.id).reduce((s,b)=>s+Number(b.amount_paid||0),0);
+          const pct=Math.round((sold/(t.quantity_available||1))*100);
+          return `<div class="tt-edit-card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+              <div>
+                <div style="font-weight:700;font-size:15px">${escapeHTML(t.name)}</div>
+                <div class="muted" style="margin-top:3px">${fmtKES(t.price)} per ticket</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:16px">${fmtKES(rev)}</div>
+                <div class="muted" style="font-size:12px">${sold} / ${t.quantity_available} sold</div>
+              </div>
+            </div>
+            <div class="avail-bar" style="max-width:100%"><div class="avail-fill ${pct>=100?'low':''}" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('')||`<div class="state"><p>No ticket types.</p></div>`}
+      </div>
+      <div id="editTTPanel" style="display:none;margin-top:14px"></div>
+
+      <h3 style="margin:24px 0 12px">Bookings (${bookings.length})</h3>
+      ${bookings.length===0
+        ?`<div class="state"><p>No bookings yet.</p></div>`
+        :`<table>
+          <thead><tr><th>Attendee</th><th>Email</th><th>Phone</th><th>Ticket</th><th>Code</th><th>Paid</th><th>Booked</th><th>Status</th></tr></thead>
+          <tbody>${bookings.map(b=>`
+            <tr>
+              <td data-label="Attendee"><strong>${escapeHTML(b.attendee_name)}</strong></td>
+              <td data-label="Email">${escapeHTML(b.email)}</td>
+              <td data-label="Phone">${escapeHTML(b.phone)}</td>
+              <td data-label="Ticket">${escapeHTML(ttMap[b.ticket_type_id]?.name||'—')}</td>
+              <td data-label="Code"><span style="font-family:monospace;font-size:11px;background:var(--bg);padding:3px 7px;border-radius:5px;color:var(--muted)">${escapeHTML(b.ticket_code.slice(0,8))}…</span></td>
+              <td data-label="Paid"><strong>${fmtKES(b.amount_paid)}</strong></td>
+              <td data-label="Booked">${escapeHTML(new Date(b.created_at).toLocaleString('en-GB'))}</td>
+              <td data-label="Status">${b.checked_in?`<span class="badge ok">Checked In</span>`:`<span class="badge warn">Pending</span>`}</td>
+            </tr>`).join('')}
+          </tbody></table>`}
+    </div>`;
+
+  $('#copyEv').onclick=()=>{ navigator.clipboard.writeText(link); toast('Link copied!'); };
+
+  // Edit event details
+  $('#editBtn').onclick=()=>{
+    const p=$('#editPanel');
+    if(p.style.display!=='none'){ p.style.display='none'; p.innerHTML=''; $('#editBtn').textContent='✏ Edit Event'; return; }
+    p.style.display=''; $('#editBtn').textContent='✕ Close';
+    const dval=new Date(event.date); dval.setMinutes(dval.getMinutes()-dval.getTimezoneOffset());
+    p.innerHTML=`
+      <div style="border-top:1px solid var(--line);padding-top:18px">
+        <div class="form-grid">
+          <div class="full"><label>Event name</label><input id="ed_name" value="${escapeHTML(event.name)}"/></div>
+          <div><label>Date & time</label><input id="ed_date" type="datetime-local" value="${dval.toISOString().slice(0,16)}"/></div>
+          <div><label>Venue</label><input id="ed_venue" value="${escapeHTML(event.venue)}"/></div>
+          <div class="full"><label>Description</label><textarea id="ed_desc">${escapeHTML(event.description||'')}</textarea></div>
+        </div>
+        <div id="edErr"></div>
+        <button class="btn btn-amber" id="saveEdit" style="margin-top:14px">Save Changes</button>
+      </div>`;
+    $('#saveEdit').onclick=async()=>{
+      try{
+        const upd=await sb.from('events').update({
+          name:$('#ed_name').value.trim(), date:new Date($('#ed_date').value).toISOString(),
+          venue:$('#ed_venue').value.trim(), description:$('#ed_desc').value.trim()
+        }).eq('id',id);
+        if(upd.error) throw upd.error;
+        toast('Event updated'); renderAdminEvent(id);
+      }catch(err){ $('#edErr').innerHTML=`<div class="inline-error">Could not save: ${escapeHTML(err.message)}</div>`; }
+    };
+  };
+
+  // Edit ticket types
+  $('#editTTBtn').onclick=()=>{
+    const p=$('#editTTPanel');
+    if(p.style.display!=='none'){ p.style.display='none'; p.innerHTML=''; $('#editTTBtn').textContent='✏ Edit Ticket Types'; return; }
+    p.style.display=''; $('#editTTBtn').textContent='✕ Close Editor';
+    p.innerHTML=`
+      <div class="card">
+        <h3 style="margin-bottom:14px">Edit Ticket Types</h3>
+        <div id="ttEditRows"></div>
+        <button class="btn-link" id="addNewTT" style="margin-bottom:14px">+ Add New Type</button>
+        <div id="ttEditErr"></div>
+        <button class="btn btn-amber" id="saveTTs">Save Changes</button>
+      </div>`;
+    const rows=$('#ttEditRows');
+    tts.forEach(t=>{
+      const row=el(`<div class="ttr" data-tt-id="${t.id}">
+        <div><label>Name</label><input class="tt-name" value="${escapeHTML(t.name)}"/></div>
+        <div><label>Price (KES)</label><input class="tt-price" type="number" value="${t.price}" min="0"/></div>
+        <div><label>Total Qty</label><input class="tt-qty" type="number" value="${t.quantity_available}" min="${t.quantity_sold||0}"/></div>
+        <button class="btn-danger-link tt-rm" style="padding-bottom:8px">Remove</button>
+      </div>`);
+      row.querySelector('.tt-rm').onclick=async()=>{
+        if(!confirm('Remove this ticket type?')) return;
+        try{ const d=await sb.from('ticket_types').delete().eq('id',t.id); if(d.error) throw d.error; row.remove(); toast('Removed'); }
+        catch(err){ alert('Error: '+err.message); }
+      };
+      rows.appendChild(row);
+    });
+    $('#addNewTT').onclick=()=>{
+      const row=el(`<div class="ttr" data-tt-id="new">
+        <div><label>Name</label><input class="tt-name" placeholder="VIP"/></div>
+        <div><label>Price (KES)</label><input class="tt-price" type="number" min="0" placeholder="2000"/></div>
+        <div><label>Quantity</label><input class="tt-qty" type="number" min="1" placeholder="50"/></div>
+        <button class="btn-danger-link tt-rm" style="padding-bottom:8px">Remove</button>
+      </div>`);
+      row.querySelector('.tt-rm').onclick=()=>row.remove();
+      rows.appendChild(row);
+    };
+    $('#saveTTs').onclick=async()=>{
+      $('#ttEditErr').innerHTML='';
+      try{
+        for(const row of [...rows.querySelectorAll('.ttr')]){
+          const rid=row.dataset.ttId;
+          const name=row.querySelector('.tt-name').value.trim();
+          const price=parseFloat(row.querySelector('.tt-price').value);
+          const qty=parseInt(row.querySelector('.tt-qty').value,10);
+          if(!name||isNaN(price)||isNaN(qty)) continue;
+          if(rid==='new'){ const ins=await sb.from('ticket_types').insert({event_id:id,name,price,quantity_available:qty}); if(ins.error) throw ins.error; }
+          else { const upd=await sb.from('ticket_types').update({name,price,quantity_available:qty}).eq('id',rid); if(upd.error) throw upd.error; }
+        }
+        toast('Ticket types saved'); renderAdminEvent(id);
+      }catch(err){ $('#ttEditErr').innerHTML=`<div class="inline-error">Error: ${escapeHTML(err.message)}</div>`; }
+    };
+  };
+}
+
+/* =======================================================
+   SCANNER
+======================================================= */
+let qrScanner=null;
+function stopScannerIfAny(){ if(qrScanner){ try{ qrScanner.stop().then(()=>qrScanner.clear()).catch(()=>{}); }catch(_){} qrScanner=null; } }
+
+function renderScanner(){
+  if(!isAdmin()){ location.hash='#/admin'; return; }
+  $('#app').innerHTML=`
+    <div class="container-sm">
+      <div class="between" style="margin-bottom:16px">
+        <h2>Ticket Scanner</h2>
+        <a href="#/admin/dashboard" style="font-weight:600;color:var(--muted);font-size:14px">← Dashboard</a>
+      </div>
+      <div class="card">
+        <div id="qr-reader" style="width:100%"></div>
+        <div id="scanResult" style="margin-top:16px"></div>
+        <div style="margin-top:10px;text-align:center"><button class="btn-link" id="restartScan" style="display:none">Scan another ticket</button></div>
+      </div>
+    </div>`;
+  startScanner();
+  $('#restartScan').onclick=()=>{ $('#scanResult').innerHTML=''; $('#restartScan').style.display='none'; startScanner(); };
+}
+
+function startScanner(){
+  stopScannerIfAny();
+  qrScanner=new Html5Qrcode("qr-reader");
+  qrScanner.start({facingMode:"environment"},{fps:10,qrbox:240},async(decoded)=>{ stopScannerIfAny(); $('#restartScan').style.display=''; await handleScan(decoded); },()=>{})
+    .catch(err=>{ $('#scanResult').innerHTML=`<div class="inline-error">Could not start camera: ${escapeHTML(err.message||err)}</div>`; $('#restartScan').style.display=''; });
+}
+
+async function handleScan(code){
+  const box=$('#scanResult');
+  box.innerHTML=`<div class="state pulse"><div class="spinner"></div><p style="margin-top:12px">Verifying…</p></div>`;
+  try{
+    const r=await sb.from('bookings').select('*').eq('ticket_code',code).maybeSingle(); if(r.error) throw r.error;
+    const b=r.data;
+    if(!b){ box.innerHTML=`<div class="state" style="background:var(--err-soft);border-color:#FECACA"><div style="font-size:36px">❌</div><h3 style="color:var(--err);margin-top:10px">Ticket Not Found</h3><p>This QR does not match any booking.</p></div>`; return; }
+    const ev=await sb.from('events').select('name,venue,date').eq('id',b.event_id).maybeSingle();
+    const tt=await sb.from('ticket_types').select('name').eq('id',b.ticket_type_id).maybeSingle();
+    if(b.checked_in){
+      box.innerHTML=`<div class="state" style="background:var(--warn-soft);border-color:#FCD34D"><div style="font-size:36px">⚠️</div><span class="badge warn" style="margin-top:10px">Already Checked In</span><h3 style="margin-top:10px">${escapeHTML(b.attendee_name)}</h3><p>${escapeHTML(ev.data?.name||'')} — ${escapeHTML(tt.data?.name||'')}</p><p class="muted">Checked in at ${escapeHTML(new Date(b.checked_in_at).toLocaleString('en-GB'))}</p></div>`;
+      return;
+    }
+    box.innerHTML=`<div class="state" style="background:var(--ok-soft);border-color:#A7F3D0"><div style="font-size:36px">✅</div><span class="badge ok" style="margin-top:10px">Valid Ticket</span><h3 style="margin-top:10px">${escapeHTML(b.attendee_name)}</h3><p>${escapeHTML(ev.data?.name||'')}</p><p class="muted">${escapeHTML(tt.data?.name||'')} · ${escapeHTML(ev.data?.venue||'')}</p><button class="btn btn-amber" id="checkIn" style="margin-top:16px">✓ Mark as Checked In</button></div>`;
+    $('#checkIn').onclick=async()=>{
+      try{ const u=await sb.from('bookings').update({checked_in:true,checked_in_at:new Date().toISOString()}).eq('id',b.id); if(u.error) throw u.error; box.innerHTML=`<div class="state" style="background:var(--ok-soft);border-color:#A7F3D0"><div style="font-size:48px">🎉</div><h3 style="margin-top:10px;color:var(--ok)">${escapeHTML(b.attendee_name)} is in!</h3><p class="muted">Enjoy the event.</p></div>`; }
+      catch(err){ box.innerHTML+=`<div class="inline-error">Could not update: ${escapeHTML(err.message)}</div>`; }
+    };
+  }catch(err){ box.innerHTML=`<div class="inline-error">Scan error: ${escapeHTML(err.message)}</div>`; }
+}
+
+/* =======================================================
+   BOOT
+======================================================= */
+router();
+</script>
+</body>
+</html>
