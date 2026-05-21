@@ -1,48 +1,4 @@
 <!DOCTYPE html>
-<!--
-  ============================================================
-  SUPABASE SQL — run once in your project SQL editor
-  ============================================================
-  create table events (
-    id uuid default gen_random_uuid() primary key,
-    name text not null,
-    date timestamptz not null,
-    venue text not null,
-    description text,
-    created_at timestamptz default now()
-  );
-
-  create table ticket_types (
-    id uuid default gen_random_uuid() primary key,
-    event_id uuid references events(id) on delete cascade,
-    name text not null,
-    price numeric not null,
-    quantity_available integer not null,
-    quantity_sold integer default 0,
-    created_at timestamptz default now()
-  );
-
-  create table bookings (
-    id uuid default gen_random_uuid() primary key,
-    event_id uuid references events(id) on delete cascade,
-    ticket_type_id uuid references ticket_types(id) on delete cascade,
-    attendee_name text not null,
-    phone text not null,
-    email text not null,
-    ticket_code uuid default gen_random_uuid(),
-    amount_paid numeric not null,
-    payment_method text not null,
-    payment_status text default 'paid',
-    checked_in boolean default false,
-    checked_in_at timestamptz,
-    created_at timestamptz default now()
-  );
-
-  IMPORTANT (development):
-  Disable RLS on all three tables:
-    Supabase Table Editor > events / ticket_types / bookings > RLS > Disable.
-  ============================================================
--->
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -196,7 +152,8 @@
   /* Modal */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:100;animation:fadeIn .2s}
   @media(min-width:600px){.overlay{align-items:center;padding:16px}}
-  .modal{background:#fff;border-radius:20px 20px 0 0;max-width:480px;width:100%;padding:28px 24px 36px;box-shadow:var(--shadow-lg);animation:slideUp .25s cubic-bezier(.32,1.2,.42,1)}
+  .modal{background:#fff;border-radius:20px 20px 0 0;max-width:480px;width:100%;padding:28px 24px 36px;box-shadow:var(--shadow-lg);animation:slideUp .25s cubic-bezier(.32,1.2,.42,1); max-height: 90vh; overflow-y: auto;}
+  .modal-preview{max-width: 680px;} /* wider modal for preview */
   @media(min-width:600px){.modal{border-radius:20px;padding:32px 32px 32px}}
   @keyframes fadeIn{from{opacity:0}to{opacity:1}}
   @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
@@ -382,7 +339,6 @@ function renderNav(){
   }
 }
 
-
 function handleBrandClick(e){
   // On public pages (event booking), brand logo does nothing
   if(!isAdmin() && !isScanner()){
@@ -452,7 +408,6 @@ async function renderEvent(id){
 
   app.innerHTML = `
     <div class="container-sm" style="padding-top:12px">
-      <!-- Step indicator -->
       <div class="steps" id="stepWrap" style="gap:0;margin-bottom:28px">
         <div class="step active" id="st1"><div class="step-num">1</div><div class="step-label">Select tickets</div></div>
         <div class="step-line" id="sl1"></div>
@@ -461,7 +416,6 @@ async function renderEvent(id){
         <div class="step" id="st3"><div class="step-num">3</div><div class="step-label">Payment</div></div>
       </div>
 
-      <!-- Hero -->
       <div class="hero" style="margin-bottom:28px">
         <span class="pill"><span class="dotc"></span>${escapeHTML(event.venue)}</span>
         <h1 style="margin-top:16px;position:relative;z-index:1">${escapeHTML(event.name)}</h1>
@@ -472,13 +426,11 @@ async function renderEvent(id){
         ${event.description ? `<p style="margin-top:18px;position:relative;z-index:1;color:var(--ink-2);line-height:1.7;font-size:14.5px">${escapeHTML(event.description)}</p>`:''}
       </div>
 
-      <!-- Ticket types -->
       <div class="between" style="margin-bottom:14px">
         <h3 style="font-size:17px;letter-spacing:-0.02em">Available Tickets</h3>
       </div>
       <div id="ttList" style="margin-bottom:28px"></div>
 
-      <!-- Details form -->
       <div class="card" style="border-radius:18px">
         <h3 style="margin-bottom:6px;font-size:18px">Your Details</h3>
         <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Your ticket will be issued to the details below.</p>
@@ -572,8 +524,8 @@ function openPaymentModal(ctx){
   renderPayStep1(ctx);
 }
 
-function modalShell(content){
-  return `<div class="overlay"><div class="modal">${content}</div></div>`;
+function modalShell(content, customClass=''){
+  return `<div class="overlay"><div class="modal ${customClass}">${content}</div></div>`;
 }
 function modalHeader(title){
   return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -716,14 +668,13 @@ async function finalizeBooking(ctx){
   });
 }
 
-
 /* =======================================================
-   SHARED PDF GENERATOR
+   SHARED TICKET PREVIEW & PDF GENERATOR
 ======================================================= */
 function buildTicketHTML(b, event, ttName){
   const code = b.ticket_code;
   return `
-    <div style="font-family:'DM Sans',sans-serif;background:#fff;width:600px;border-radius:0;overflow:visible;box-shadow:none">
+    <div style="font-family:'DM Sans',sans-serif;background:#fff;width:600px;border-radius:0;overflow:visible;box-shadow:none;text-align:left;">
       <div style="background:#0D0D0D;color:#fff;padding:28px 30px 24px;position:relative">
         <div style="position:absolute;top:0;right:0;width:6px;height:100%;background:repeating-linear-gradient(45deg,#F59E0B,#F59E0B 4px,transparent 4px,transparent 10px)"></div>
         <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px">🎟 Tikiti · E-Ticket</div>
@@ -740,10 +691,10 @@ function buildTicketHTML(b, event, ttName){
       </div>
       <div style="padding:28px 30px 32px;background:#fff">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px">
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Attendee</div><div style="font-weight:600;font-size:15px">${escapeHTML(b.attendee_name)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Ticket Type</div><div style="font-weight:600;font-size:15px">${escapeHTML(ttName)}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Quantity</div><div style="font-weight:600;font-size:15px">${escapeHTML(String(b.qty||1))}</div></div>
-          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Amount Paid</div><div style="font-weight:600;font-size:15px">${fmtKES(b.amount_paid)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Attendee</div><div style="font-weight:600;font-size:15px;color:#0D0D0D;">${escapeHTML(b.attendee_name)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Ticket Type</div><div style="font-weight:600;font-size:15px;color:#0D0D0D;">${escapeHTML(ttName)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Quantity</div><div style="font-weight:600;font-size:15px;color:#0D0D0D;">${escapeHTML(String(b.qty||1))}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Amount Paid</div><div style="font-weight:600;font-size:15px;color:#0D0D0D;">${fmtKES(b.amount_paid)}</div></div>
         </div>
         <div style="display:flex;align-items:flex-start;gap:20px;padding-top:18px;border-top:1px dashed #E8E4DC">
           <div style="background:#fff;padding:8px;border:1.5px solid #E8E4DC;border-radius:10px;flex-shrink:0" id="pdf-qr-target"></div>
@@ -757,44 +708,66 @@ function buildTicketHTML(b, event, ttName){
     </div>`;
 }
 
-function downloadTicketPDF(booking, event, ttName, qty){
+function openTicketPreview(booking, event, ttName, qty) {
   const code = booking.ticket_code;
-  // Build a fresh off-screen container with fully inlined styles
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;top:-9999px;left:0;width:600px;background:#fff';
-  // Patch qty onto booking object for template
   booking.qty = qty || 1;
-  wrap.innerHTML = buildTicketHTML(booking, event, ttName);
-  document.body.appendChild(wrap);
+  
+  // Open Modal containing the visible ticket preview
+  $('#modal-root').innerHTML = modalShell(`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3>Ticket Preview</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    
+    <div style="background:var(--bg); padding:24px 20px; border-radius:12px; margin-bottom:20px; overflow-x:auto; display:flex; justify-content:center; border:1px solid var(--line);">
+      <div id="pdf-target-wrapper" style="width:600px; flex-shrink:0; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        ${buildTicketHTML(booking, event, ttName)}
+      </div>
+    </div>
+    
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn-pdf" id="confirmDownloadBtn" style="flex:2">⬇ Download Exact PDF</button>
+    </div>
+  `, 'modal-preview');
 
-  // Generate QR inside the off-screen element
-  const qrTarget = wrap.querySelector('#pdf-qr-target');
+  // Generate QR code directly inside the visible modal
+  const qrTarget = $('#modal-root').querySelector('#pdf-qr-target');
   new QRCode(qrTarget, {text: code, width: 130, height: 130, correctLevel: QRCode.CorrectLevel.M});
 
-  // Wait for QR canvas then convert to img and export
-  setTimeout(() => {
-    const canvas = qrTarget.querySelector('canvas');
-    if(canvas){
-      const img = document.createElement('img');
-      img.src = canvas.toDataURL('image/png');
-      img.width = 130; img.height = 130;
-      img.style.display = 'block';
-      qrTarget.innerHTML = '';
-      qrTarget.appendChild(img);
-    }
-    const opt = {
-      margin: [0.4, 0.5, 0.4, 0.5],
-      filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
-      image: { type: 'png', quality: 1 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
-      jsPDF: { unit: 'in', format: [8.27, 5.5], orientation: 'landscape' }
-    };
-    html2pdf().set(opt).from(wrap).save().then(() => {
-      document.body.removeChild(wrap);
-    }).catch(() => {
-      if(document.body.contains(wrap)) document.body.removeChild(wrap);
-    });
-  }, 700);
+  // Handle Download Click
+  $('#confirmDownloadBtn').onclick = () => {
+    const btn = $('#confirmDownloadBtn');
+    btn.disabled = true;
+    btn.textContent = 'Generating PDF...';
+    btn.style.opacity = '0.7';
+    
+    // Give QR a tiny fraction of a second to ensure canvas is drawn
+    setTimeout(() => {
+      const element = document.getElementById('pdf-target-wrapper');
+      
+      const opt = {
+        margin: [0.5, 0, 0.5, 0], // Top/Bottom margins, perfectly centered
+        filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      
+      // Capture the visible on-screen element
+      html2pdf().set(opt).from(element).save().then(() => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.innerHTML = '✓ Downloaded!';
+        setTimeout(() => { btn.innerHTML = '⬇ Download Exact PDF'; }, 3000);
+      }).catch((err) => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.textContent = '⬇ Download Exact PDF';
+        alert('Could not generate PDF. Please try again.');
+      });
+    }, 300);
+  };
 }
 
 /* =======================================================
@@ -846,11 +819,10 @@ function renderConfirmation({booking,event,tt,qty}){
         </div>
 
         <div class="ticket-actions no-print" style="flex-direction:column;margin-top:20px">
-          <button class="btn-pdf" id="downloadPdfBtn">⬇ Download PDF Ticket</button>
+          <button class="btn-pdf" id="previewPdfBtn">👁️ Preview & Download PDF</button>
           <p class="pdf-hint">Download your ticket to share it via WhatsApp or Email.</p>
         </div>
 
-        <!-- Re-download link -->
         <div class="no-print" style="background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">🔗 Your Ticket Link</div>
           <p style="font-size:13px;color:var(--ink-2);margin-bottom:10px">Bookmark or share this link to re-download your ticket anytime before the event.</p>
@@ -866,19 +838,8 @@ function renderConfirmation({booking,event,tt,qty}){
 
   $('#copyRedownload').onclick=()=>{ navigator.clipboard.writeText(redownloadLink); toast('Link copied!'); };
 
-  $('#downloadPdfBtn').onclick = () => {
-    const btn = $('#downloadPdfBtn');
-    btn.disabled = true;
-    btn.textContent = 'Generating PDF…';
-    btn.style.opacity = '0.7';
-    downloadTicketPDF(booking, event, tt.name, qty);
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.style.opacity = '1';
-      btn.innerHTML = '✓ Downloaded!';
-      setTimeout(() => { btn.innerHTML = '⬇ Download PDF Ticket'; }, 3000);
-    }, 1800);
-  };
+  // Trigger Unified Preview Modal
+  $('#previewPdfBtn').onclick = () => openTicketPreview(booking, event, tt.name, qty);
 }
 
 /* =======================================================
@@ -1078,7 +1039,6 @@ async function renderAdminEvent(id){
         <a href="#/admin/dashboard" style="font-weight:600;color:var(--muted);font-size:14px">← Dashboard</a>
       </div>
 
-      <!-- Prominent share link -->
       <div class="share-box" style="margin-bottom:20px">
         <div class="share-box-label">Public Booking Link — share with attendees</div>
         <div class="share-box-row">
@@ -1087,7 +1047,6 @@ async function renderAdminEvent(id){
         </div>
       </div>
 
-      <!-- Event header -->
       <div class="card" style="margin-bottom:20px">
         <div class="between">
           <div>
@@ -1103,14 +1062,12 @@ async function renderAdminEvent(id){
         <div id="editPanel" style="margin-top:16px;display:none"></div>
       </div>
 
-      <!-- Stats row -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
         <div class="stat"><div class="label">Revenue</div><div class="num" style="font-size:22px">${fmtKES(totalRev)}</div></div>
         <div class="stat"><div class="label">Bookings</div><div class="num" style="font-size:22px">${bookings.length}</div></div>
         <div class="stat"><div class="label">Checked In</div><div class="num" style="font-size:22px">${checkedIn}</div></div>
       </div>
 
-      <!-- Ticket types with edit -->
       <div class="between" style="margin-bottom:12px">
         <h3>Ticket Types</h3>
         <button class="btn-link" id="editTTBtn" style="font-size:13px">✏ Edit Ticket Types</button>
@@ -1140,7 +1097,7 @@ async function renderAdminEvent(id){
       <h3 style="margin:24px 0 12px">Bookings (${bookings.length})</h3>
       ${bookings.length===0
         ?`<div class="state"><p>No bookings yet.</p></div>`
-        :`<table>
+        :`<div style="overflow-x:auto;"><table>
           <thead><tr><th>Attendee</th><th>Email</th><th>Phone</th><th>Ticket</th><th>Code</th><th>Paid</th><th>Booked</th><th>Status</th><th></th></tr></thead>
           <tbody>${bookings.map(b=>`
             <tr>
@@ -1152,9 +1109,9 @@ async function renderAdminEvent(id){
               <td data-label="Paid"><strong>${fmtKES(b.amount_paid)}</strong></td>
               <td data-label="Booked">${escapeHTML(new Date(b.created_at).toLocaleString('en-GB'))}</td>
               <td data-label="Status">${b.checked_in?`<span class="badge ok">Checked In</span>`:`<span class="badge warn">Pending</span>`}</td>
-              <td data-label=""><button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="adminPrintTicket('${b.id}')">🖨 Print</button></td>
+              <td data-label=""><button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;white-space:nowrap;" onclick="adminPrintTicket('${b.id}')">👁️ Preview</button></td>
             </tr>`).join('')}
-          </tbody></table>`}
+          </tbody></table></div>`}
     </div>`;
 
   $('#copyEv').onclick=()=>{ navigator.clipboard.writeText(link); toast('Link copied!'); };
@@ -1244,7 +1201,6 @@ async function renderAdminEvent(id){
   };
 }
 
-
 /* =======================================================
    TICKET RETRIEVAL  (#/ticket/:code)
 ======================================================= */
@@ -1268,7 +1224,7 @@ async function renderTicketRetrieval(code){
     if(ttR.error) throw ttR.error;
     const event = evR.data, tt = ttR.data;
 
-    // Check if event has passed — link expires after event date
+    // Check if event has passed
     const eventDate = new Date(event.date);
     const now = new Date();
     const expired = now > eventDate;
@@ -1313,7 +1269,7 @@ async function renderTicketRetrieval(code){
           </div>
           ${!expired ? `
           <div class="ticket-actions no-print" style="flex-direction:column;margin-top:20px">
-            <button class="btn-pdf" id="redownloadPdfBtn">⬇ Download PDF Ticket</button>
+            <button class="btn-pdf" id="redownloadPdfBtn">👁️ Preview & Download PDF</button>
             <p class="pdf-hint">Download your ticket to share it via WhatsApp or Email.</p>
           </div>` : `
           <div style="margin-top:16px" class="no-print">
@@ -1325,16 +1281,7 @@ async function renderTicketRetrieval(code){
     new QRCode(document.getElementById('retrievedQr'),{text:b.ticket_code,width:130,height:130,correctLevel:QRCode.CorrectLevel.M});
 
     if(!expired){
-      $('#redownloadPdfBtn').onclick = () => {
-        const btn = $('#redownloadPdfBtn');
-        btn.disabled = true; btn.textContent = 'Generating PDF…'; btn.style.opacity='0.7';
-        downloadTicketPDF(b, event, tt?.name||'Ticket', 1);
-        setTimeout(() => {
-          btn.disabled=false; btn.style.opacity='1';
-          btn.innerHTML='✓ Downloaded!';
-          setTimeout(()=>{ btn.innerHTML='⬇ Download PDF Ticket'; },3000);
-        }, 1800);
-      };
+      $('#redownloadPdfBtn').onclick = () => openTicketPreview(b, event, tt?.name||'Ticket', 1);
     }
   }catch(err){
     app.innerHTML=`<div class="container-sm"><div class="inline-error">Could not load ticket: ${escapeHTML(err.message)}</div></div>`;
@@ -1412,12 +1359,11 @@ async function handleScan(code){
   }catch(err){ box.innerHTML=`<div class="inline-error">Scan error: ${escapeHTML(err.message)}</div>`; }
 }
 
-
 /* =======================================================
    ADMIN PRINT TICKET
 ======================================================= */
 async function adminPrintTicket(bookingId){
-  toast('Preparing ticket PDF…');
+  toast('Loading preview…');
   try{
     const br = await sb.from('bookings').select('*').eq('id', bookingId).maybeSingle();
     if(br.error) throw br.error;
@@ -1428,7 +1374,8 @@ async function adminPrintTicket(bookingId){
     ]);
     if(evR.error) throw evR.error;
     if(ttR.error) throw ttR.error;
-    downloadTicketPDF(b, evR.data, ttR.data?.name||'Ticket', 1);
+    
+    openTicketPreview(b, evR.data, ttR.data?.name||'Ticket', 1);
   }catch(err){
     toast('Error: ' + err.message);
   }
