@@ -376,9 +376,9 @@ function renderNav(){
     $('#logoutLink').onclick = (e)=>{ e.preventDefault(); setRole(null); location.hash='#/admin'; };
     if(footer) footer.parentElement.style.display='none';
   } else {
-    // Public view: show quiet Staff Login in nav for easy mobile access
-    nav.innerHTML = `<a href="#/admin" style="color:#C4BFB8;font-size:13px">Staff Login</a>`;
-    if(footer) footer.parentElement.style.display='none'; // nav link is enough
+    // Public view: no staff links in nav — Staff Login only on home page
+    nav.innerHTML = ``;
+    if(footer) footer.parentElement.style.display='none';
   }
 }
 
@@ -413,6 +413,11 @@ function renderHome(){
       <p style="font-size:16px;color:var(--muted);margin-top:12px;max-width:340px;margin-inline:auto;line-height:1.6">
         Use the event link shared with you to browse and book tickets.
       </p>
+      <div style="margin-top:48px">
+        <a href="#/admin" style="font-size:13px;color:#C4BFB8;font-family:'DM Sans',sans-serif;font-weight:500;text-decoration:none;letter-spacing:.02em;padding:8px 16px;border:1px solid #E8E4DC;border-radius:8px;display:inline-block"
+           onmouseover="this.style.color='#8A8278';this.style.borderColor='#C4BFB8'"
+           onmouseout="this.style.color='#C4BFB8';this.style.borderColor='#E8E4DC'">Staff Login</a>
+      </div>
     </div>`;
 }
 
@@ -764,33 +769,61 @@ function renderConfirmation({booking,event,tt,qty}){
     const btn = $('#downloadPdfBtn');
     btn.disabled = true;
     btn.textContent = 'Generating PDF…';
-    const ticket = document.getElementById('confirmCard');
-    // Temporarily strip styles that cause html2canvas to clip content
-    const prevOverflow = ticket.style.overflow;
-    const prevRadius   = ticket.style.borderRadius;
-    ticket.style.overflow     = 'visible';
-    ticket.style.borderRadius = '0';
+
+    // Give QRCode canvas extra time to fully render
     setTimeout(() => {
+      const ticket = document.getElementById('confirmCard');
+
+      // Clone the ticket so we never mutate the live DOM
+      const clone = ticket.cloneNode(true);
+
+      // Inline the dark header background (html2canvas cannot resolve CSS variables)
+      const hdr = clone.querySelector('.ticket-header');
+      if (hdr) hdr.style.background = '#0D0D0D';
+
+      // Convert the QR <canvas> to a plain <img> inside the clone
+      const origCanvas = ticket.querySelector('#qr canvas');
+      if (origCanvas) {
+        const img = document.createElement('img');
+        img.src    = origCanvas.toDataURL('image/png');
+        img.width  = origCanvas.width;
+        img.height = origCanvas.height;
+        img.style.display = 'block';
+        const cloneQrDiv = clone.querySelector('#qr');
+        if (cloneQrDiv) { cloneQrDiv.innerHTML = ''; cloneQrDiv.appendChild(img); }
+      }
+
+      // Remove clipping styles on the clone wrapper
+      clone.style.overflow     = 'visible';
+      clone.style.borderRadius = '0';
+      clone.style.boxShadow    = 'none';
+      clone.style.width        = '600px';
+
+      // Mount clone off-screen so html2canvas can measure full height
+      clone.style.position = 'fixed';
+      clone.style.top      = '-9999px';
+      clone.style.left     = '0';
+      document.body.appendChild(clone);
+
       const opt = {
-        margin: [0.4, 0.4, 0.4, 0.4],
+        margin: [0.3, 0.3, 0.3, 0.3],
         filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, windowWidth: 800, scrollY: 0 },
+        image: { type: 'png', quality: 1 },
+        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
         jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
       };
-      html2pdf().set(opt).from(ticket).save().then(() => {
-        ticket.style.overflow     = prevOverflow;
-        ticket.style.borderRadius = prevRadius;
+
+      html2pdf().set(opt).from(clone).save().then(() => {
+        document.body.removeChild(clone);
         btn.disabled = false;
         btn.innerHTML = '✓ Downloaded!';
         setTimeout(() => { btn.innerHTML = '⬇ Download PDF Ticket'; }, 3000);
       }).catch(() => {
-        ticket.style.overflow     = prevOverflow;
-        ticket.style.borderRadius = prevRadius;
+        if (document.body.contains(clone)) document.body.removeChild(clone);
         btn.disabled = false;
         btn.textContent = '⬇ Download PDF Ticket';
       });
-    }, 500);
+    }, 600);
   };
 }
 
@@ -1184,7 +1217,26 @@ function startScanner(){
   stopScannerIfAny();
   qrScanner=new Html5Qrcode("qr-reader");
   qrScanner.start({facingMode:"environment"},{fps:10,qrbox:240},async(decoded)=>{ stopScannerIfAny(); $('#restartScan').style.display=''; await handleScan(decoded); },()=>{})
-    .catch(err=>{ $('#scanResult').innerHTML=`<div class="inline-error">Could not start camera: ${escapeHTML(err.message||err)}</div>`; $('#restartScan').style.display=''; });
+    .catch(err=>{
+      const isPermission = /NotAllowed|Permission|denied/i.test(err.message||String(err));
+      $('#scanResult').innerHTML = isPermission
+        ? `<div class="state" style="background:var(--warn-soft);border-color:#FCD34D">
+             <div style="font-size:36px">📷</div>
+             <h3 style="margin-top:12px">Camera Access Required</h3>
+             <p style="max-width:280px;margin:10px auto 0;font-size:14px;color:var(--ink-2);line-height:1.6">
+               Please allow camera access to scan tickets.
+               <br><br>
+               <strong>iPhone/iPad:</strong> Settings → Safari → Camera → Allow.
+               <br><br>
+               <strong>Android:</strong> Tap the lock/camera icon in the address bar and allow access.
+               <br><br>
+               Then tap the button below.
+             </p>
+             <button class="btn btn-amber" style="margin-top:18px" onclick="location.reload()">Reload &amp; Try Again</button>
+           </div>`
+        : `<div class="inline-error">Could not start camera: ${escapeHTML(err.message||err)}</div>`;
+      $('#restartScan').style.display='';
+    });
 }
 
 async function handleScan(code){
