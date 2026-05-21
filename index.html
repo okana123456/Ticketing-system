@@ -54,6 +54,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
   :root{
     --amber:#F59E0B;
@@ -77,7 +78,7 @@
     --shadow-lg:0 8px 32px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.06);
   }
   *{box-sizing:border-box}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.6}
+  html,body{margin:0;padding:0;background:linear-gradient(160deg,#FAF8F4 0%,#F7F5F0 60%,#F2EFE8 100%);min-height:100vh;color:var(--ink);font-family:'DM Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.6}
   a{color:var(--ink);text-decoration:none}
   h1,h2,h3,h4{font-family:'Syne',sans-serif;font-weight:700;letter-spacing:-0.02em;margin:0}
   h1{font-size:36px;line-height:1.1;font-weight:800}
@@ -93,14 +94,14 @@
   input:focus,select:focus,textarea:focus{border-color:var(--amber);box-shadow:0 0 0 3px rgba(245,158,11,.15)}
   textarea{resize:vertical;min-height:80px}
 
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;border:none;border-radius:var(--radius);padding:12px 20px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;letter-spacing:.01em}
-  .btn:hover{background:#222;transform:translateY(-1px);box-shadow:var(--shadow)}
-  .btn:active{transform:translateY(0)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;border:none;border-radius:var(--radius);padding:12px 20px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s cubic-bezier(.22,1,.36,1);letter-spacing:.01em}
+  .btn:hover{background:#222;transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+  .btn:active{transform:translateY(0);box-shadow:none}
   .btn:disabled{background:#C9C3B8;cursor:not-allowed;transform:none;box-shadow:none}
-  .btn-amber{background:var(--amber);color:var(--ink)}
-  .btn-amber:hover{background:var(--amber-dark);color:var(--ink)}
+  .btn-amber{background:linear-gradient(135deg,var(--amber) 0%,#F59E0B 100%);color:var(--ink);box-shadow:0 2px 8px rgba(245,158,11,.3)}
+  .btn-amber:hover{background:linear-gradient(135deg,#FBBF24 0%,var(--amber-dark) 100%);color:var(--ink);box-shadow:0 8px 28px rgba(245,158,11,.4)}
   .btn-ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
-  .btn-ghost:hover{background:var(--line-2);transform:none;box-shadow:none}
+  .btn-ghost:hover{background:var(--line-2);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.07)}
   .btn-link{background:transparent;color:var(--amber-dark);border:none;padding:4px 0;cursor:pointer;font:inherit;font-weight:600;font-size:14px}
   .btn-link:hover{text-decoration:underline}
   .btn-danger-link{background:transparent;color:var(--err);border:none;padding:4px 0;cursor:pointer;font:inherit;font-weight:600;font-size:14px}
@@ -109,22 +110,22 @@
   .container-sm{max-width:680px;margin:0 auto;padding:28px 24px}
 
   /* Topbar */
-  .topbar{background:#fff;border-bottom:1.5px solid var(--line);position:sticky;top:0;z-index:50}
+  .topbar{background:rgba(255,255,255,0.82);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-bottom:1px solid rgba(232,228,220,0.65);position:sticky;top:0;z-index:50;box-shadow:0 1px 0 rgba(0,0,0,.04),0 4px 24px rgba(0,0,0,.05)}
   .topbar-inner{max-width:1100px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
   .brand{display:flex;align-items:center;gap:10px;font-family:'Syne',sans-serif;font-weight:800;font-size:19px;letter-spacing:-0.02em;color:var(--ink)}
-  .brand-icon{width:30px;height:30px;background:var(--amber);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .brand-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--amber) 0%,#F97316 100%);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 2px 8px rgba(245,158,11,.35)}
   .nav{display:flex;gap:20px;align-items:center}
-  .nav a{color:var(--muted);font-weight:500;font-size:14px;transition:color .15s}
+  .nav a{color:var(--muted);font-weight:500;font-size:14px;transition:color .2s}
   .nav a:hover{color:var(--ink)}
 
   /* Cards */
-  .card{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:24px;box-shadow:var(--shadow)}
+  .card{background:var(--surface);border:1px solid rgba(232,228,220,0.9);border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.05),0 1px 3px rgba(0,0,0,.04)}
   .grid{display:grid;gap:16px}
   .row{display:flex;gap:12px;flex-wrap:wrap}
   .between{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
   .muted{color:var(--muted);font-size:13px}
 
-  .pill{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;color:var(--ink-2);background:#fff}
+  .pill{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.9);border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-size:12px;font-weight:600;color:var(--ink-2);box-shadow:0 1px 3px rgba(0,0,0,.05)}
   .pill .dotc{width:7px;height:7px;border-radius:50%;background:var(--amber)}
 
   .badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;border:1.5px solid transparent;letter-spacing:.04em;text-transform:uppercase}
@@ -149,10 +150,11 @@
   tbody tr:hover td{background:var(--bg)}
 
   /* Event Hero */
-  .hero{background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:32px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
-  .hero::after{content:'';position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:var(--amber-soft);border-radius:50%;opacity:.6;pointer-events:none}
-  .hero h1{position:relative;z-index:1}
-  .meta-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;font-weight:500;color:var(--ink-2)}
+  .hero{background:linear-gradient(135deg,#fff 60%,#FFFBF0 100%);border:1px solid rgba(232,228,220,0.8);border-radius:20px;padding:36px 32px 32px;position:relative;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.07),0 1px 4px rgba(0,0,0,.04)}
+  .hero::before{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;background:radial-gradient(circle,rgba(245,158,11,.18) 0%,transparent 70%);pointer-events:none}
+  .hero::after{content:'';position:absolute;bottom:-40px;left:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(245,158,11,.10) 0%,transparent 70%);pointer-events:none}
+  .hero h1{position:relative;z-index:1;font-size:32px;line-height:1.15;letter-spacing:-0.03em}
+  .meta-chip{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.9);border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:13px;font-weight:500;color:var(--ink-2);box-shadow:0 1px 3px rgba(0,0,0,.05)}
 
   /* Step indicator */
   .steps{display:flex;align-items:center}
@@ -166,11 +168,11 @@
   .step.done + .step-line{background:var(--ink)}
 
   /* Ticket type card */
-  .tt-card{display:flex;justify-content:space-between;align-items:flex-start;padding:18px 20px;border:1.5px solid var(--line);border-radius:12px;background:#fff;margin-bottom:10px;transition:border-color .2s}
-  .tt-card:hover{border-color:#D4D0C8}
-  .tt-card.sold-out{opacity:.55}
-  .tt-name-label{font-weight:600;font-size:15px}
-  .tt-price-label{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--ink);margin-top:4px}
+  .tt-card{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 22px;border:1.5px solid var(--line);border-radius:14px;background:#fff;margin-bottom:10px;transition:border-color .2s,box-shadow .2s,transform .2s;cursor:default;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .tt-card:hover{border-color:rgba(245,158,11,.5);box-shadow:0 6px 20px rgba(245,158,11,.12),0 2px 8px rgba(0,0,0,.06);transform:translateY(-1px)}
+  .tt-card.sold-out{opacity:.5;pointer-events:none}
+  .tt-name-label{font-weight:700;font-size:15px;color:var(--ink)}
+  .tt-price-label{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--ink);margin-top:4px;letter-spacing:-0.02em}
 
   /* Availability progress bar */
   .avail-bar{height:5px;background:var(--line);border-radius:999px;margin-top:8px;overflow:hidden;max-width:180px}
@@ -220,6 +222,12 @@
   .ticket-qr-box{background:#fff;padding:8px;border:1.5px solid var(--line);border-radius:10px;flex-shrink:0}
   .ticket-code-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 11px;color:var(--muted);word-break:break-all;line-height:1.6;margin-top:8px}
   .ticket-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+
+  /* PDF Download */
+  .btn-pdf{display:inline-flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,var(--ink) 0%,#2D2D2D 100%);color:#fff;border:none;border-radius:12px;padding:16px 28px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s cubic-bezier(.22,1,.36,1);width:100%;letter-spacing:.01em;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+  .btn-pdf:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,0,0,.28)}
+  .btn-pdf:active{transform:translateY(0);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  .pdf-hint{text-align:center;font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5}
 
   /* Share box — prominent */
   .share-box{background:var(--ink);border-radius:14px;padding:18px 20px;margin-bottom:20px}
@@ -319,9 +327,10 @@
 /* =======================================================
    CONFIG
 ======================================================= */
-const SUPABASE_URL = "https://votyrlphojrubtohjeed.supabase.co";
+const SUPABASE_URL = "https://votyrlphojrubtohjeeed.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvdHlybHBob2pydWJ0b2hqZWVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODU1NDgsImV4cCI6MjA5NDk2MTU0OH0.gI4Cg91a43XLNzMr9E2Q0A3UCT-f5LT_igQGOUbbJn4";
-const ADMIN_PASSWORD = "admin2024";
+const ADMIN_PASSWORD  = "admin2024";
+const SCANNER_PASSWORD = "demo2024";
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -343,16 +352,24 @@ function toast(msg){
   $('#toast-root').appendChild(t);
   setTimeout(()=>t.remove(), 2400);
 }
-function isAdmin(){ return sessionStorage.getItem('admin')==='1'; }
-function setAdmin(v){ v ? sessionStorage.setItem('admin','1') : sessionStorage.removeItem('admin'); }
+function isAdmin()  { return sessionStorage.getItem('role')==='admin'; }
+function isScanner(){ return sessionStorage.getItem('role')==='scanner'; }
+function isStaff()  { return isAdmin() || isScanner(); }
+function setRole(role){ role ? sessionStorage.setItem('role', role) : sessionStorage.removeItem('role'); }
+// Legacy compat shim (existing code calls setAdmin/isAdmin)
+function setAdmin(v){ setRole(v ? 'admin' : null); }
 
 function renderNav(){
   const nav = $('#topnav');
   if(isAdmin()){
     nav.innerHTML = `<a href="#/admin/dashboard">Dashboard</a><a href="#/scan">Scanner</a><a href="#" id="logoutLink" style="color:var(--err)">Logout</a>`;
-    $('#logoutLink').onclick = (e)=>{ e.preventDefault(); setAdmin(false); location.hash='#/admin'; };
+    $('#logoutLink').onclick = (e)=>{ e.preventDefault(); setRole(null); location.hash='#/admin'; };
+  } else if(isScanner()){
+    nav.innerHTML = `<a href="#/scan">Scanner</a><a href="#" id="logoutLink" style="color:var(--err)">Logout</a>`;
+    $('#logoutLink').onclick = (e)=>{ e.preventDefault(); setRole(null); location.hash='#/admin'; };
   } else {
-    nav.innerHTML = `<a href="#/admin">Admin</a>`;
+    // Public view: no visible admin/login link (stealth admin)
+    nav.innerHTML = ``;
   }
 }
 
@@ -408,9 +425,9 @@ async function renderEvent(id){
   }catch(err){ app.innerHTML=`<div class="container-sm"><div class="inline-error">Could not load: ${escapeHTML(err.message)}</div></div>`; return; }
 
   app.innerHTML = `
-    <div class="container-sm">
+    <div class="container-sm" style="padding-top:12px">
       <!-- Step indicator -->
-      <div class="steps" id="stepWrap" style="gap:0;margin-bottom:24px">
+      <div class="steps" id="stepWrap" style="gap:0;margin-bottom:28px">
         <div class="step active" id="st1"><div class="step-num">1</div><div class="step-label">Select tickets</div></div>
         <div class="step-line" id="sl1"></div>
         <div class="step" id="st2"><div class="step-num">2</div><div class="step-label">Your details</div></div>
@@ -419,23 +436,26 @@ async function renderEvent(id){
       </div>
 
       <!-- Hero -->
-      <div class="hero" style="margin-bottom:22px">
+      <div class="hero" style="margin-bottom:28px">
         <span class="pill"><span class="dotc"></span>${escapeHTML(event.venue)}</span>
-        <h1 style="margin-top:14px;position:relative;z-index:1">${escapeHTML(event.name)}</h1>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;position:relative;z-index:1">
+        <h1 style="margin-top:16px;position:relative;z-index:1">${escapeHTML(event.name)}</h1>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;position:relative;z-index:1">
           <span class="meta-chip">📅 ${escapeHTML(fmtDate(event.date))}</span>
           <span class="meta-chip">📍 ${escapeHTML(event.venue)}</span>
         </div>
-        ${event.description ? `<p style="margin-top:16px;position:relative;z-index:1;color:var(--ink-2)">${escapeHTML(event.description)}</p>`:''}
+        ${event.description ? `<p style="margin-top:18px;position:relative;z-index:1;color:var(--ink-2);line-height:1.7;font-size:14.5px">${escapeHTML(event.description)}</p>`:''}
       </div>
 
       <!-- Ticket types -->
-      <h3 style="margin-bottom:14px">Available Tickets</h3>
-      <div id="ttList" style="margin-bottom:24px"></div>
+      <div class="between" style="margin-bottom:14px">
+        <h3 style="font-size:17px;letter-spacing:-0.02em">Available Tickets</h3>
+      </div>
+      <div id="ttList" style="margin-bottom:28px"></div>
 
       <!-- Details form -->
-      <div class="card">
-        <h3 style="margin-bottom:18px">Your Details</h3>
+      <div class="card" style="border-radius:18px">
+        <h3 style="margin-bottom:6px;font-size:18px">Your Details</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Your ticket will be issued to the details below.</p>
         <div class="form-grid">
           <div><label>Full name</label><input id="f_name" placeholder="Jane Doe"/></div>
           <div><label>Phone</label><input id="f_phone" placeholder="07XXXXXXXX"/></div>
@@ -443,9 +463,9 @@ async function renderEvent(id){
           <div><label>Ticket type</label><select id="f_tt"></select></div>
           <div><label>Quantity</label><select id="f_qty">${[...Array(10)].map((_,i)=>`<option>${i+1}</option>`).join('')}</select></div>
         </div>
-        <div style="margin-top:18px"><div class="summary" id="summary"></div></div>
+        <div style="margin-top:20px"><div class="summary" id="summary"></div></div>
         <div id="bookError"></div>
-        <button class="btn btn-amber" id="payBtn" style="width:100%;margin-top:18px;padding:14px;font-size:15px">Continue to Payment →</button>
+        <button class="btn btn-amber" id="payBtn" style="width:100%;margin-top:20px;padding:16px;font-size:15px;border-radius:12px;letter-spacing:.01em">Continue to Payment →</button>
       </div>
     </div>`;
 
@@ -723,14 +743,35 @@ function renderConfirmation({booking,event,tt,qty}){
           </div>
         </div>
 
-        <div class="ticket-actions no-print">
-          <a class="btn btn-ghost" href="${wa}" target="_blank" rel="noopener">📱 WhatsApp</a>
-          <a class="btn btn-ghost" href="${mail}">📧 Email</a>
-          <button class="btn btn-amber" onclick="window.print()" style="flex:1">⬇ Save / Print</button>
+        <div class="ticket-actions no-print" style="flex-direction:column;margin-top:20px">
+          <button class="btn-pdf" id="downloadPdfBtn">⬇ Download PDF Ticket</button>
+          <p class="pdf-hint">Download your ticket to share it via WhatsApp or Email.</p>
         </div>
       </div>
     </div>`;
   new QRCode(document.getElementById('qr'),{text:code,width:130,height:130,correctLevel:QRCode.CorrectLevel.M});
+
+  $('#downloadPdfBtn').onclick = () => {
+    const btn = $('#downloadPdfBtn');
+    btn.disabled = true;
+    btn.textContent = 'Generating PDF…';
+    const ticket = document.getElementById('confirmCard');
+    const opt = {
+      margin: [10, 10, 10, 10],
+      filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 3, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm', format: 'a5', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(ticket).save().then(()=>{
+      btn.disabled = false;
+      btn.innerHTML = '✓ Downloaded!';
+      setTimeout(()=>{ btn.innerHTML = '⬇ Download PDF Ticket'; }, 3000);
+    }).catch(()=>{
+      btn.disabled = false;
+      btn.textContent = '⬇ Download PDF Ticket';
+    });
+  };
 }
 
 /* =======================================================
@@ -738,19 +779,29 @@ function renderConfirmation({booking,event,tt,qty}){
 ======================================================= */
 function renderAdminLogin(){
   if(isAdmin()){ location.hash='#/admin/dashboard'; return; }
+  if(isScanner()){ location.hash='#/scan'; return; }
   $('#app').innerHTML=`
     <div class="login-wrap">
       <div class="login-card">
         <div style="font-size:32px;text-align:center;margin-bottom:16px">🔐</div>
-        <h2 style="text-align:center">Admin Login</h2>
-        <p class="muted" style="text-align:center;margin:6px 0 22px">Enter the admin password to continue.</p>
+        <h2 style="text-align:center">Staff Login</h2>
+        <p class="muted" style="text-align:center;margin:6px 0 22px">Enter your staff password to continue.</p>
         <label>Password</label>
         <input id="pw" type="password" placeholder="••••••••"/>
         <div id="loginErr"></div>
         <button class="btn btn-amber" id="loginBtn" style="width:100%;margin-top:16px;padding:13px">Login →</button>
       </div>
     </div>`;
-  const go=()=>{ const v=$('#pw').value; if(v===ADMIN_PASSWORD){ setAdmin(true); location.hash='#/admin/dashboard'; } else $('#loginErr').innerHTML=`<div class="inline-error">Incorrect password.</div>`; };
+  const go=()=>{
+    const v=$('#pw').value;
+    if(v===ADMIN_PASSWORD){
+      setRole('admin'); location.hash='#/admin/dashboard';
+    } else if(v===SCANNER_PASSWORD){
+      setRole('scanner'); location.hash='#/scan';
+    } else {
+      $('#loginErr').innerHTML=`<div class="inline-error">Incorrect password.</div>`;
+    }
+  };
   $('#loginBtn').onclick=go;
   $('#pw').addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
 }
@@ -1092,12 +1143,12 @@ let qrScanner=null;
 function stopScannerIfAny(){ if(qrScanner){ try{ qrScanner.stop().then(()=>qrScanner.clear()).catch(()=>{}); }catch(_){} qrScanner=null; } }
 
 function renderScanner(){
-  if(!isAdmin()){ location.hash='#/admin'; return; }
+  if(!isAdmin() && !isScanner()){ location.hash='#/admin'; return; }
   $('#app').innerHTML=`
     <div class="container-sm">
       <div class="between" style="margin-bottom:16px">
         <h2>Ticket Scanner</h2>
-        <a href="#/admin/dashboard" style="font-weight:600;color:var(--muted);font-size:14px">← Dashboard</a>
+        ${isAdmin() ? `<a href="#/admin/dashboard" style="font-weight:600;color:var(--muted);font-size:14px">← Dashboard</a>` : ''}
       </div>
       <div class="card">
         <div id="qr-reader" style="width:100%"></div>
