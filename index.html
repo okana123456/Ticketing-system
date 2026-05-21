@@ -311,7 +311,7 @@
 
 <div class="topbar">
   <div class="topbar-inner">
-    <a href="#/" class="brand">
+    <a href="#/" class="brand" id="brandLink" onclick="handleBrandClick(event)">
       <div class="brand-icon">🎟</div>
       Tikiti
     </a>
@@ -382,6 +382,17 @@ function renderNav(){
   }
 }
 
+
+function handleBrandClick(e){
+  // On public pages (event booking), brand logo does nothing
+  if(!isAdmin() && !isScanner()){
+    const h = location.hash;
+    if(h.startsWith('#/event/') || h === '#/'){
+      e.preventDefault();
+    }
+  }
+}
+
 /* =======================================================
    ROUTER
 ======================================================= */
@@ -392,6 +403,7 @@ const routes = [
   { match: /^#\/admin\/dashboard$/, handler: renderAdminDashboard },
   { match: /^#\/admin\/event\/([^/]+)$/, handler: (m)=>renderAdminEvent(m[1]) },
   { match: /^#\/scan$/, handler: renderScanner },
+  { match: /^#\/ticket\/([^/]+)$/, handler: (m)=>renderTicketRetrieval(m[1]) },
 ];
 function router(){
   if(!location.hash) location.hash='#/';
@@ -704,14 +716,93 @@ async function finalizeBooking(ctx){
   });
 }
 
+
+/* =======================================================
+   SHARED PDF GENERATOR
+======================================================= */
+function buildTicketHTML(b, event, ttName){
+  const code = b.ticket_code;
+  return `
+    <div style="font-family:'DM Sans',sans-serif;background:#fff;width:600px;border-radius:0;overflow:visible;box-shadow:none">
+      <div style="background:#0D0D0D;color:#fff;padding:28px 30px 24px;position:relative">
+        <div style="position:absolute;top:0;right:0;width:6px;height:100%;background:repeating-linear-gradient(45deg,#F59E0B,#F59E0B 4px,transparent 4px,transparent 10px)"></div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px">🎟 Tikiti · E-Ticket</div>
+        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-0.02em;line-height:1.2">${escapeHTML(event.name)}</div>
+        <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+          <span style="font-size:13px;color:rgba(255,255,255,.65)">📅 ${escapeHTML(fmtDate(event.date))}</span>
+          <span style="font-size:13px;color:rgba(255,255,255,.65)">📍 ${escapeHTML(event.venue)}</span>
+        </div>
+      </div>
+      <div style="position:relative;height:1px;margin:0">
+        <div style="position:absolute;left:14px;right:14px;top:0;border-top:1.5px dashed rgba(0,0,0,.12)"></div>
+        <div style="position:absolute;top:-14px;left:-14px;width:28px;height:28px;border-radius:50%;background:#F7F5F0"></div>
+        <div style="position:absolute;top:-14px;right:-14px;width:28px;height:28px;border-radius:50%;background:#F7F5F0"></div>
+      </div>
+      <div style="padding:28px 30px 32px;background:#fff">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px">
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Attendee</div><div style="font-weight:600;font-size:15px">${escapeHTML(b.attendee_name)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Ticket Type</div><div style="font-weight:600;font-size:15px">${escapeHTML(ttName)}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Quantity</div><div style="font-weight:600;font-size:15px">${escapeHTML(String(b.qty||1))}</div></div>
+          <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#8A8278;margin-bottom:3px">Amount Paid</div><div style="font-weight:600;font-size:15px">${fmtKES(b.amount_paid)}</div></div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:20px;padding-top:18px;border-top:1px dashed #E8E4DC">
+          <div style="background:#fff;padding:8px;border:1.5px solid #E8E4DC;border-radius:10px;flex-shrink:0" id="pdf-qr-target"></div>
+          <div style="flex:1">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8A8278;margin-bottom:6px">Booking Code</div>
+            <div style="font-family:ui-monospace,monospace;font-size:11px;background:#F7F5F0;border:1px solid #E8E4DC;border-radius:7px;padding:8px 11px;color:#8A8278;word-break:break-all;line-height:1.6">${escapeHTML(code)}</div>
+            <div style="margin-top:10px;font-size:12px;color:#8A8278;line-height:1.5">Show this QR code at the venue entrance for entry.</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function downloadTicketPDF(booking, event, ttName, qty){
+  const code = booking.ticket_code;
+  // Build a fresh off-screen container with fully inlined styles
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;top:-9999px;left:0;width:600px;background:#fff';
+  // Patch qty onto booking object for template
+  booking.qty = qty || 1;
+  wrap.innerHTML = buildTicketHTML(booking, event, ttName);
+  document.body.appendChild(wrap);
+
+  // Generate QR inside the off-screen element
+  const qrTarget = wrap.querySelector('#pdf-qr-target');
+  new QRCode(qrTarget, {text: code, width: 130, height: 130, correctLevel: QRCode.CorrectLevel.M});
+
+  // Wait for QR canvas then convert to img and export
+  setTimeout(() => {
+    const canvas = qrTarget.querySelector('canvas');
+    if(canvas){
+      const img = document.createElement('img');
+      img.src = canvas.toDataURL('image/png');
+      img.width = 130; img.height = 130;
+      img.style.display = 'block';
+      qrTarget.innerHTML = '';
+      qrTarget.appendChild(img);
+    }
+    const opt = {
+      margin: [0.4, 0.5, 0.4, 0.5],
+      filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
+      image: { type: 'png', quality: 1 },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+      jsPDF: { unit: 'in', format: [8.27, 5.5], orientation: 'landscape' }
+    };
+    html2pdf().set(opt).from(wrap).save().then(() => {
+      document.body.removeChild(wrap);
+    }).catch(() => {
+      if(document.body.contains(wrap)) document.body.removeChild(wrap);
+    });
+  }, 700);
+}
+
 /* =======================================================
    CONFIRMATION — boarding pass
 ======================================================= */
 function renderConfirmation({booking,event,tt,qty}){
   const code=booking.ticket_code;
-  const msgTxt=`Ticket for ${event.name} on ${fmtDate(event.date)} at ${event.venue}. Attendee: ${booking.attendee_name}. Ticket code: ${code}`;
-  const wa=`https://wa.me/?text=${encodeURIComponent(msgTxt)}`;
-  const mail=`mailto:?subject=${encodeURIComponent('Your ticket for '+event.name)}&body=${encodeURIComponent(msgTxt)}`;
+  const redownloadLink=`${location.origin}${location.pathname}#/ticket/${code}`;
 
   $('#app').innerHTML=`
     <div class="container-sm" style="padding-top:28px">
@@ -723,7 +814,6 @@ function renderConfirmation({booking,event,tt,qty}){
       <div class="ticket-wrap">
         <div class="ticket" id="confirmCard">
           <div class="ticket-stripe"></div>
-
           <div class="ticket-header">
             <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px">🎟 Tikiti · E-Ticket</div>
             <div class="ticket-event-name">${escapeHTML(event.name)}</div>
@@ -732,13 +822,11 @@ function renderConfirmation({booking,event,tt,qty}){
               <span>📍 ${escapeHTML(event.venue)}</span>
             </div>
           </div>
-
           <div class="ticket-tear" style="position:relative">
             <div class="ticket-notch-l"></div>
             <div class="ticket-notch-r"></div>
             <div style="border-top:1.5px dashed rgba(0,0,0,.1);margin:0 14px"></div>
           </div>
-
           <div class="ticket-body">
             <div class="ticket-fields">
               <div class="ticket-field"><div class="tf-label">Attendee</div><div class="tf-value">${escapeHTML(booking.attendee_name)}</div></div>
@@ -761,69 +849,35 @@ function renderConfirmation({booking,event,tt,qty}){
           <button class="btn-pdf" id="downloadPdfBtn">⬇ Download PDF Ticket</button>
           <p class="pdf-hint">Download your ticket to share it via WhatsApp or Email.</p>
         </div>
+
+        <!-- Re-download link -->
+        <div class="no-print" style="background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">🔗 Your Ticket Link</div>
+          <p style="font-size:13px;color:var(--ink-2);margin-bottom:10px">Bookmark or share this link to re-download your ticket anytime before the event.</p>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="redownloadInput" readonly value="${escapeHTML(redownloadLink)}" style="font-size:12px;font-family:ui-monospace,monospace;background:#fff"/>
+            <button class="btn btn-ghost" id="copyRedownload" style="white-space:nowrap;font-size:13px;padding:10px 14px;flex-shrink:0">Copy</button>
+          </div>
+        </div>
       </div>
     </div>`;
+
   new QRCode(document.getElementById('qr'),{text:code,width:130,height:130,correctLevel:QRCode.CorrectLevel.M});
+
+  $('#copyRedownload').onclick=()=>{ navigator.clipboard.writeText(redownloadLink); toast('Link copied!'); };
 
   $('#downloadPdfBtn').onclick = () => {
     const btn = $('#downloadPdfBtn');
     btn.disabled = true;
     btn.textContent = 'Generating PDF…';
-
-    // Give QRCode canvas extra time to fully render
+    btn.style.opacity = '0.7';
+    downloadTicketPDF(booking, event, tt.name, qty);
     setTimeout(() => {
-      const ticket = document.getElementById('confirmCard');
-
-      // Clone the ticket so we never mutate the live DOM
-      const clone = ticket.cloneNode(true);
-
-      // Inline the dark header background (html2canvas cannot resolve CSS variables)
-      const hdr = clone.querySelector('.ticket-header');
-      if (hdr) hdr.style.background = '#0D0D0D';
-
-      // Convert the QR <canvas> to a plain <img> inside the clone
-      const origCanvas = ticket.querySelector('#qr canvas');
-      if (origCanvas) {
-        const img = document.createElement('img');
-        img.src    = origCanvas.toDataURL('image/png');
-        img.width  = origCanvas.width;
-        img.height = origCanvas.height;
-        img.style.display = 'block';
-        const cloneQrDiv = clone.querySelector('#qr');
-        if (cloneQrDiv) { cloneQrDiv.innerHTML = ''; cloneQrDiv.appendChild(img); }
-      }
-
-      // Remove clipping styles on the clone wrapper
-      clone.style.overflow     = 'visible';
-      clone.style.borderRadius = '0';
-      clone.style.boxShadow    = 'none';
-      clone.style.width        = '600px';
-
-      // Mount clone off-screen so html2canvas can measure full height
-      clone.style.position = 'fixed';
-      clone.style.top      = '-9999px';
-      clone.style.left     = '0';
-      document.body.appendChild(clone);
-
-      const opt = {
-        margin: [0.3, 0.3, 0.3, 0.3],
-        filename: `tikiti-${booking.attendee_name.replace(/\s+/g,'-').toLowerCase()}-${code.slice(0,8)}.pdf`,
-        image: { type: 'png', quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-      };
-
-      html2pdf().set(opt).from(clone).save().then(() => {
-        document.body.removeChild(clone);
-        btn.disabled = false;
-        btn.innerHTML = '✓ Downloaded!';
-        setTimeout(() => { btn.innerHTML = '⬇ Download PDF Ticket'; }, 3000);
-      }).catch(() => {
-        if (document.body.contains(clone)) document.body.removeChild(clone);
-        btn.disabled = false;
-        btn.textContent = '⬇ Download PDF Ticket';
-      });
-    }, 600);
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.innerHTML = '✓ Downloaded!';
+      setTimeout(() => { btn.innerHTML = '⬇ Download PDF Ticket'; }, 3000);
+    }, 1800);
   };
 }
 
@@ -1087,7 +1141,7 @@ async function renderAdminEvent(id){
       ${bookings.length===0
         ?`<div class="state"><p>No bookings yet.</p></div>`
         :`<table>
-          <thead><tr><th>Attendee</th><th>Email</th><th>Phone</th><th>Ticket</th><th>Code</th><th>Paid</th><th>Booked</th><th>Status</th></tr></thead>
+          <thead><tr><th>Attendee</th><th>Email</th><th>Phone</th><th>Ticket</th><th>Code</th><th>Paid</th><th>Booked</th><th>Status</th><th></th></tr></thead>
           <tbody>${bookings.map(b=>`
             <tr>
               <td data-label="Attendee"><strong>${escapeHTML(b.attendee_name)}</strong></td>
@@ -1098,6 +1152,7 @@ async function renderAdminEvent(id){
               <td data-label="Paid"><strong>${fmtKES(b.amount_paid)}</strong></td>
               <td data-label="Booked">${escapeHTML(new Date(b.created_at).toLocaleString('en-GB'))}</td>
               <td data-label="Status">${b.checked_in?`<span class="badge ok">Checked In</span>`:`<span class="badge warn">Pending</span>`}</td>
+              <td data-label=""><button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="adminPrintTicket('${b.id}')">🖨 Print</button></td>
             </tr>`).join('')}
           </tbody></table>`}
     </div>`;
@@ -1189,6 +1244,103 @@ async function renderAdminEvent(id){
   };
 }
 
+
+/* =======================================================
+   TICKET RETRIEVAL  (#/ticket/:code)
+======================================================= */
+async function renderTicketRetrieval(code){
+  const app = $('#app');
+  app.innerHTML = `<div class="container-sm"><div class="state pulse"><div class="spinner"></div><p style="margin-top:14px;color:var(--muted)">Looking up your ticket…</p></div></div>`;
+  try{
+    const r = await sb.from('bookings').select('*').eq('ticket_code', code).maybeSingle();
+    if(r.error) throw r.error;
+    const b = r.data;
+    if(!b){
+      app.innerHTML = `<div class="container-sm"><div class="state"><h3>Ticket Not Found</h3><p>This link may be invalid or the ticket code is incorrect.</p></div></div>`;
+      return;
+    }
+    // Fetch event + ticket type
+    const [evR, ttR] = await Promise.all([
+      sb.from('events').select('*').eq('id', b.event_id).maybeSingle(),
+      sb.from('ticket_types').select('*').eq('id', b.ticket_type_id).maybeSingle()
+    ]);
+    if(evR.error) throw evR.error;
+    if(ttR.error) throw ttR.error;
+    const event = evR.data, tt = ttR.data;
+
+    // Check if event has passed — link expires after event date
+    const eventDate = new Date(event.date);
+    const now = new Date();
+    const expired = now > eventDate;
+
+    app.innerHTML = `
+      <div class="container-sm" style="padding-top:28px">
+        <div style="text-align:center;margin-bottom:24px">
+          <span class="badge ${expired?'err':'ok'}" style="font-size:13px;padding:7px 16px">${expired?'⏰ Event Has Passed':'✅ Valid Ticket'}</span>
+          <p class="muted" style="margin-top:10px;font-size:13px">${expired?'This event has ended. Ticket links expire after the event.':'Here is your ticket, '+escapeHTML(b.attendee_name)+'.'}</p>
+        </div>
+        <div class="ticket-wrap">
+          <div class="ticket" id="retrievedCard">
+            <div class="ticket-stripe"></div>
+            <div class="ticket-header">
+              <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:8px">🎟 Tikiti · E-Ticket</div>
+              <div class="ticket-event-name">${escapeHTML(event.name)}</div>
+              <div class="ticket-event-meta">
+                <span>📅 ${escapeHTML(fmtDate(event.date))}</span>
+                <span>📍 ${escapeHTML(event.venue)}</span>
+              </div>
+            </div>
+            <div class="ticket-tear" style="position:relative">
+              <div class="ticket-notch-l"></div><div class="ticket-notch-r"></div>
+              <div style="border-top:1.5px dashed rgba(0,0,0,.1);margin:0 14px"></div>
+            </div>
+            <div class="ticket-body">
+              <div class="ticket-fields">
+                <div class="ticket-field"><div class="tf-label">Attendee</div><div class="tf-value">${escapeHTML(b.attendee_name)}</div></div>
+                <div class="ticket-field"><div class="tf-label">Ticket Type</div><div class="tf-value">${escapeHTML(tt?.name||'—')}</div></div>
+                <div class="ticket-field"><div class="tf-label">Amount Paid</div><div class="tf-value">${fmtKES(b.amount_paid)}</div></div>
+                <div class="ticket-field"><div class="tf-label">Status</div><div class="tf-value">${b.checked_in?'<span class="badge ok">Checked In</span>':'<span class="badge warn">Not Yet Checked In</span>'}</div></div>
+              </div>
+              <div class="ticket-qr-row">
+                <div class="ticket-qr-box"><div id="retrievedQr"></div></div>
+                <div style="flex:1">
+                  <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Booking Code</div>
+                  <div class="ticket-code-mono">${escapeHTML(b.ticket_code)}</div>
+                  <div class="muted" style="margin-top:10px;font-size:12px;line-height:1.5">Show this QR code at the venue entrance for entry.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          ${!expired ? `
+          <div class="ticket-actions no-print" style="flex-direction:column;margin-top:20px">
+            <button class="btn-pdf" id="redownloadPdfBtn">⬇ Download PDF Ticket</button>
+            <p class="pdf-hint">Download your ticket to share it via WhatsApp or Email.</p>
+          </div>` : `
+          <div style="margin-top:16px" class="no-print">
+            <div class="inline-info">This event has ended. Ticket download is no longer available.</div>
+          </div>`}
+        </div>
+      </div>`;
+
+    new QRCode(document.getElementById('retrievedQr'),{text:b.ticket_code,width:130,height:130,correctLevel:QRCode.CorrectLevel.M});
+
+    if(!expired){
+      $('#redownloadPdfBtn').onclick = () => {
+        const btn = $('#redownloadPdfBtn');
+        btn.disabled = true; btn.textContent = 'Generating PDF…'; btn.style.opacity='0.7';
+        downloadTicketPDF(b, event, tt?.name||'Ticket', 1);
+        setTimeout(() => {
+          btn.disabled=false; btn.style.opacity='1';
+          btn.innerHTML='✓ Downloaded!';
+          setTimeout(()=>{ btn.innerHTML='⬇ Download PDF Ticket'; },3000);
+        }, 1800);
+      };
+    }
+  }catch(err){
+    app.innerHTML=`<div class="container-sm"><div class="inline-error">Could not load ticket: ${escapeHTML(err.message)}</div></div>`;
+  }
+}
+
 /* =======================================================
    SCANNER
 ======================================================= */
@@ -1258,6 +1410,28 @@ async function handleScan(code){
       catch(err){ box.innerHTML+=`<div class="inline-error">Could not update: ${escapeHTML(err.message)}</div>`; }
     };
   }catch(err){ box.innerHTML=`<div class="inline-error">Scan error: ${escapeHTML(err.message)}</div>`; }
+}
+
+
+/* =======================================================
+   ADMIN PRINT TICKET
+======================================================= */
+async function adminPrintTicket(bookingId){
+  toast('Preparing ticket PDF…');
+  try{
+    const br = await sb.from('bookings').select('*').eq('id', bookingId).maybeSingle();
+    if(br.error) throw br.error;
+    const b = br.data;
+    const [evR, ttR] = await Promise.all([
+      sb.from('events').select('*').eq('id', b.event_id).maybeSingle(),
+      sb.from('ticket_types').select('*').eq('id', b.ticket_type_id).maybeSingle()
+    ]);
+    if(evR.error) throw evR.error;
+    if(ttR.error) throw ttR.error;
+    downloadTicketPDF(b, evR.data, ttR.data?.name||'Ticket', 1);
+  }catch(err){
+    toast('Error: ' + err.message);
+  }
 }
 
 /* =======================================================
